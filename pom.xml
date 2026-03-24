@@ -13,8 +13,8 @@
     <name>Shift Scheduler (Timefold)</name>
 
     <properties>
-        <maven.compiler.source>21</maven.compiler.source>
-        <maven.compiler.target>21</maven.compiler.target>
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <quarkus.version>3.15.1</quarkus.version>
         <timefold.version>1.8.1</timefold.version>
@@ -45,6 +45,26 @@
             <groupId>ai.timefold.solver</groupId>
             <artifactId>timefold-solver-core</artifactId>
             <version>${timefold.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+            <version>2.17.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-hibernate-orm</artifactId>
+            <version>3.15.1</version> <!-- Match your Quarkus version -->
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-jdbc-mysql</artifactId>
+            <version>3.15.1</version>
+        </dependency>
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-agroal</artifactId>
+            <version>3.15.1</version>
         </dependency>
     </dependencies>
 
