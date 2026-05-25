@@ -4180,16 +4180,16 @@ public class ShiftApp {
             }
 
             // Validate all shifts exist
-            for (String shift : shifts) {
-                if (!SHIFT_TIMES.containsKey(shift)) {
-                    return Response.status(Response.Status.BAD_REQUEST)
-                            .entity(Map.of(
-                                    "error", "Invalid shift: " + shift,
-                                    "valid_shifts", SHIFT_TIMES.keySet()
-                            ))
-                            .build();
-                }
-            }
+//            for (String shift : shifts) {
+//                if (!SHIFT_TIMES.containsKey(shift)) {
+//                    return Response.status(Response.Status.BAD_REQUEST)
+//                            .entity(Map.of(
+//                                    "error", "Invalid shift: " + shift,
+//                                    "valid_shifts", SHIFT_TIMES.keySet()
+//                            ))
+//                            .build();
+//                }
+//            }
 
             // Validate dates
             for (String day : days) {
@@ -4656,11 +4656,11 @@ public class ShiftApp {
             }
 
             // Validate shift
-            if (!SHIFT_TIMES.containsKey(shift)) {
-                return Response.status(Response.Status.BAD_REQUEST)
-                        .entity(Map.of("error", "Invalid shift. Must be: Morning, Afternoon, or Night"))
-                        .build();
-            }
+//            if (!SHIFT_TIMES.containsKey(shift)) {
+//                return Response.status(Response.Status.BAD_REQUEST)
+//                        .entity(Map.of("error", "Invalid shift. Must be: Morning, Afternoon, or Night"))
+//                        .build();
+//            }
 
             // ============ CHECK FOR DUPLICATE EMPLOYEE IDs IN REQUEST ============
             Map<String, List<String>> duplicateIds = new HashMap<>();
@@ -5661,7 +5661,867 @@ public class ShiftApp {
             )).build();
         }
     }
+    @POST
+    @Path("/shifts/batch-assign")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response assignMultipleShifts(Map<String, Object> input) {
+        try {
+            System.out.println("=== POST /shifts/batch-assign ===");
+            System.out.println("Input: " + input);
 
+            // Parse shifts array
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> shifts = (List<Map<String, Object>>) input.get("shifts");
+
+            if (shifts == null || shifts.isEmpty()) {
+                return Response.status(400).entity(Map.of(
+                        "error", "Missing required field",
+                        "required", "shifts array cannot be empty"
+                )).build();
+            }
+
+            // Validate all shifts first
+            List<Map<String, Object>> validationErrors = new ArrayList<>();
+            for (int i = 0; i < shifts.size(); i++) {
+                Map<String, Object> shift = shifts.get(i);
+                List<String> missingFields = validateShiftInput(shift);
+                if (!missingFields.isEmpty()) {
+                    Map<String, Object> error = new HashMap<>();
+                    error.put("shift_index", i);
+                    error.put("shift_name", shift.get("shift_name"));
+                    error.put("missing_fields", missingFields);
+                    validationErrors.add(error);
+                }
+            }
+
+            if (!validationErrors.isEmpty()) {
+                return Response.status(400).entity(Map.of(
+                        "status", "error",
+                        "message", "Validation failed for one or more shifts",
+                        "errors", validationErrors
+                )).build();
+            }
+
+            // Process each shift
+            List<Map<String, Object>> shiftResults = new ArrayList<>();
+            Map<String, Object> overallStats = new HashMap<>();
+
+            int totalAssignments = 0;
+            int totalWorkingDays = 0;
+            int totalBreaksScheduled = 0;
+            int totalSkipped = 0;
+            long totalSolverTime = 0;
+
+            for (int i = 0; i < shifts.size(); i++) {
+                Map<String, Object> shift = shifts.get(i);
+                System.out.println("\n📋 Processing shift " + (i+1) + "/" + shifts.size());
+                System.out.println("   Shift Name: " + shift.get("shift_name"));
+
+                try {
+                    // Process individual shift
+                    Map<String, Object> shiftResult = processSingleShift(shift);
+                    shiftResult.put("shift_index", i);
+                    shiftResults.add(shiftResult);
+
+                    // Accumulate statistics
+                    if ("success".equals(shiftResult.get("status"))) {
+                        totalAssignments += (int) shiftResult.getOrDefault("new_assignments_made", 0);
+                        totalWorkingDays += (int) shiftResult.getOrDefault("total_working_days", 0);
+                        totalBreaksScheduled += (int) shiftResult.getOrDefault("breakSchedulesCount", 0);
+                        totalSkipped += (int) shiftResult.getOrDefault("skipped_count", 0);
+                        totalSolverTime += ((Number) shiftResult.getOrDefault("solver_time_seconds", 0.0)).longValue();
+                    }
+
+                } catch (Exception e) {
+                    Map<String, Object> errorResult = new HashMap<>();
+                    errorResult.put("shift_index", i);
+                    errorResult.put("shift_name", shift.get("shift_name"));
+                    errorResult.put("status", "error");
+                    errorResult.put("error_message", e.getMessage());
+                    shiftResults.add(errorResult);
+                    e.printStackTrace();
+                }
+            }
+
+            // Prepare overall statistics
+            overallStats.put("total_shifts_processed", shifts.size());
+            overallStats.put("successful_shifts", shiftResults.stream()
+                    .filter(r -> "success".equals(r.get("status")))
+                    .count());
+            overallStats.put("failed_shifts", shiftResults.stream()
+                    .filter(r -> "error".equals(r.get("status")))
+                    .count());
+            overallStats.put("total_assignments_made", totalAssignments);
+            overallStats.put("total_working_days", totalWorkingDays);
+            overallStats.put("total_breaks_scheduled", totalBreaksScheduled);
+            overallStats.put("total_skipped_assignments", totalSkipped);
+            overallStats.put("total_solver_time_seconds", totalSolverTime);
+
+            // Build final response
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "completed");
+            response.put("overall_statistics", overallStats);
+            response.put("shift_results", shiftResults);
+
+            // Add summary message
+            String summary = String.format(
+                    "Batch assignment completed. Processed %d shifts. Success: %d, Failed: %d. " +
+                            "Total assignments: %d across %d days. Scheduled %d breaks.",
+                    shifts.size(),
+                    overallStats.get("successful_shifts"),
+                    overallStats.get("failed_shifts"),
+                    totalAssignments,
+                    totalWorkingDays,
+                    totalBreaksScheduled
+            );
+            response.put("summary", summary);
+
+            System.out.println("\n✅ Batch Assignment Complete!");
+            System.out.println(summary);
+
+            return Response.ok(response).build();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Response.status(500).entity(Map.of(
+                    "status", "error",
+                    "error", "Batch assignment failed: " + e.getMessage(),
+                    "stacktrace", Arrays.toString(e.getStackTrace())
+            )).build();
+        }
+    }
+
+    /**
+     * Validate required fields for a single shift
+     */
+    private List<String> validateShiftInput(Map<String, Object> shift) {
+        List<String> missingFields = new ArrayList<>();
+
+        String[] requiredFields = {
+                "shift_name", "start_date", "end_date",
+                "start_time", "end_time", "roles", "existing_users"
+        };
+
+        for (String field : requiredFields) {
+            if (!shift.containsKey(field) || shift.get(field) == null) {
+                missingFields.add(field);
+            }
+        }
+
+        // Validate roles array is not empty
+        if (shift.containsKey("roles")) {
+            List<?> roles = (List<?>) shift.get("roles");
+            if (roles == null || roles.isEmpty()) {
+                missingFields.add("roles (cannot be empty)");
+            }
+        }
+
+        // Validate existing_users array is not empty
+        if (shift.containsKey("existing_users")) {
+            List<?> users = (List<?>) shift.get("existing_users");
+            if (users == null || users.isEmpty()) {
+                missingFields.add("existing_users (cannot be empty)");
+            }
+        }
+
+        return missingFields;
+    }
+
+    /**
+     * Process a single shift using the existing assignment logic
+     * This extracts the core logic from your existing assignShiftsWithBreaks method
+     */
+    private Map<String, Object> processSingleShift(Map<String, Object> input) throws Exception {
+        // Store original values and create working copy
+        Map<String, Object> workingInput = new HashMap<>(input);
+
+        // Set default values if not provided
+        workingInput.putIfAbsent("schedule_breaks", true);
+        workingInput.putIfAbsent("overrideExisting", false);
+        workingInput.putIfAbsent("prioritizePermanent", true);
+
+        if (!workingInput.containsKey("break_duration_minutes")) {
+            workingInput.put("break_duration_minutes", 30);
+        }
+        if (!workingInput.containsKey("break_after_hours")) {
+            workingInput.put("break_after_hours", 4);
+        }
+
+        System.out.println("   Processing: " + workingInput.get("shift_name"));
+
+        // ============ VALIDATION FIRST ============
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> existingUsers = (List<Map<String, Object>>) workingInput.get("existing_users");
+
+        // Validate for duplicate employee IDs
+        if (existingUsers != null && !existingUsers.isEmpty()) {
+            Map<String, List<String>> duplicateIds = new HashMap<>();
+            Set<String> uniqueIds = new HashSet<>();
+
+            for (Map<String, Object> user : existingUsers) {
+                Object empIdObj = user.get("employee_id");
+                if (empIdObj != null) {
+                    String empId = empIdObj.toString();
+                    String employeeName = (String) user.getOrDefault("name", "Unknown");
+
+                    if (uniqueIds.contains(empId)) {
+                        duplicateIds.computeIfAbsent(empId, k -> new ArrayList<>()).add(employeeName);
+                    } else {
+                        uniqueIds.add(empId);
+                    }
+                }
+            }
+
+            if (!duplicateIds.isEmpty()) {
+                Map<String, Object> errorResponse = new HashMap<>();
+                errorResponse.put("status", "error");
+                errorResponse.put("message", "Duplicate employee IDs found in request");
+                errorResponse.put("error_type", "DUPLICATE_EMPLOYEE_IDS");
+
+                List<Map<String, Object>> duplicateDetails = new ArrayList<>();
+                for (Map.Entry<String, List<String>> entry : duplicateIds.entrySet()) {
+                    Map<String, Object> detail = new HashMap<>();
+                    detail.put("employee_id", entry.getKey());
+                    detail.put("employee_names", entry.getValue());
+                    detail.put("count", entry.getValue().size());
+                    duplicateDetails.add(detail);
+                }
+                errorResponse.put("duplicates", duplicateDetails);
+
+                throw new Exception("Duplicate employee IDs: " + duplicateIds.keySet());
+            }
+
+            System.out.println("   ✅ Validation passed: All " + existingUsers.size() + " employee IDs are unique");
+        }
+
+        // 1. Parse input
+        String shiftName    = (String) workingInput.get("shift_name");
+        String startDateStr = (String) workingInput.get("start_date");
+        String endDateStr   = (String) workingInput.get("end_date");
+        String startTime    = (String) workingInput.get("start_time");
+        String endTime      = (String) workingInput.get("end_time");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> roles = (List<Map<String, Object>>) workingInput.get("roles");
+
+        // Break configuration
+        boolean scheduleBreaks = Boolean.TRUE.equals(workingInput.getOrDefault("schedule_breaks", true));
+        int breakDurationMinutes = 30;
+        int breakAfterHours = 4;
+
+        if (workingInput.containsKey("break_duration_minutes")) {
+            breakDurationMinutes = ((Number) workingInput.get("break_duration_minutes")).intValue();
+        }
+        if (workingInput.containsKey("break_after_hours")) {
+            breakAfterHours = ((Number) workingInput.get("break_after_hours")).intValue();
+        }
+
+        LocalDate startDate = LocalDate.parse(startDateStr);
+        LocalDate endDate   = LocalDate.parse(endDateStr);
+
+        if (endDate.isBefore(startDate)) {
+            throw new Exception("End date must be after start date");
+        }
+
+        // Working dates (skip Sundays)
+        List<LocalDate> workingDates = new ArrayList<>();
+        LocalDate current = startDate;
+        while (!current.isAfter(endDate)) {
+            if (current.getDayOfWeek() != DayOfWeek.SUNDAY) {
+                workingDates.add(current);
+            }
+            current = current.plusDays(1);
+        }
+
+        LocalTime startLocalTime = LocalTime.parse(startTime);
+        LocalTime endLocalTime = LocalTime.parse(endTime);
+
+        // Calculate shift duration
+        double shiftDurationHours;
+        if (endLocalTime.isBefore(startLocalTime)) {
+            long minutesToMidnight = Duration.between(startLocalTime, LocalTime.MAX).toMinutes() + 1;
+            long minutesFromMidnight = Duration.between(LocalTime.MIN, endLocalTime).toMinutes();
+            shiftDurationHours = (minutesToMidnight + minutesFromMidnight) / 60.0;
+        } else {
+            shiftDurationHours = Duration.between(startLocalTime, endLocalTime).toMinutes() / 60.0;
+        }
+
+        System.out.println("   Shift: " + startTime + " to " + endTime);
+        System.out.println("   Calculated duration: " + shiftDurationHours + " hours");
+
+        // Check if shift duration allows for break
+        if (scheduleBreaks && shiftDurationHours < (breakAfterHours + (breakDurationMinutes / 60.0))) {
+            throw new Exception("Shift duration too short for scheduled break. " +
+                    "Shift: " + String.format("%.2f hours", shiftDurationHours) +
+                    ", Required: " + String.format("%.2f hours", breakAfterHours + (breakDurationMinutes / 60.0)));
+        }
+
+        boolean overrideExisting = Boolean.TRUE.equals(workingInput.get("overrideExisting"));
+
+        // ============ CREATE EMPLOYEE INFO OBJECTS FROM INPUT ============
+        Map<String, EmployeeInfo> allEmployees = new HashMap<>();
+        Map<String, Double> employeeWages = new HashMap<>();
+        Map<String, Integer> employeeRatings = new HashMap<>();
+        Map<String, String> employeeRoles = new HashMap<>();
+        Map<String, String> employeeGenders = new HashMap<>();
+        Map<String, String> employeeTypes = new HashMap<>();
+
+        int empCounter = 1;
+
+        for (Map<String, Object> user : existingUsers) {
+            String name     = (String) user.get("name");
+            Number rateObj  = (Number) user.get("rate");
+            String unit     = (String) user.get("unit");
+            Object ratingObj = user.get("rating");
+            String role     = (String) user.get("role");
+            String existingEmployeeId = (String) user.get("employee_id");
+
+            String gender = user.containsKey("gender") ?
+                    (String) user.get("gender") : "Male";
+
+            String employeeType = user.containsKey("employeeType") ?
+                    (String) user.get("employeeType") : "Permanent";
+
+            String employeeId;
+            if (existingEmployeeId != null && !existingEmployeeId.trim().isEmpty()) {
+                employeeId = existingEmployeeId;
+                System.out.println("   📌 Using provided employee ID: " + employeeId + " for " + name);
+            } else {
+                EmployeeInfo existing = findExistingEmployee(name, role);
+                employeeId = (existing != null) ? existing.getId() : "EMP" + String.format("%03d", empCounter++);
+                System.out.println("   🆕 Generated new employee ID: " + employeeId + " for " + name);
+            }
+
+            // Calculate hourly wage
+            double hourlyWage = rateObj.doubleValue();
+            if ("day".equalsIgnoreCase(unit)) {
+                hourlyWage = hourlyWage / 8.0;
+            } else if ("month".equalsIgnoreCase(unit)) {
+                hourlyWage = hourlyWage / (22.0 * 8.0);
+            }
+
+            int performanceRating = parseRating(ratingObj);
+
+            String email = name.toLowerCase().replace(" ", ".") + "@company.com";
+            String phone = "+91 9" + String.format("%09d", empCounter * 1234567);
+
+            // Store all employee data
+            employeeWages.put(employeeId, hourlyWage);
+            employeeRatings.put(employeeId, performanceRating);
+            employeeRoles.put(employeeId, role);
+            employeeGenders.put(employeeId, gender);
+            employeeTypes.put(employeeId, employeeType);
+
+            double finalHourlyWage = hourlyWage;
+
+            EmployeeInfo empInfo = employeeInfo.computeIfAbsent(employeeId, k ->
+                    new EmployeeInfo(employeeId, name, employeeType, gender, finalHourlyWage,
+                            "MGR001", "Operations", role, email, phone)
+            );
+
+            empInfo.setPerformanceRating(performanceRating);
+            empInfo.setPosition(role);
+            empInfo.setHourlyWage(hourlyWage);
+            empInfo.setGender(gender);
+            empInfo.setEmployeeType(employeeType);
+            addSkillsBasedOnRole(empInfo, role);
+            empInfo.setName(name);
+            empInfo.setDepartment("Operations");
+            empInfo.setCategory(employeeType);
+            allEmployees.put(employeeId, empInfo);
+
+            System.out.println("   👤 Employee: " + name + " (" + employeeId + ") - Type: " + employeeType +
+                    ", Rating: " + performanceRating + ", Wage: $" + String.format("%.2f", hourlyWage) + "/hr");
+        }
+
+        // ============ CREATE ROLE LIMITS AND RATING REQUIREMENTS ============
+        List<Scheduler.ShiftSchedule.RoleLimit> roleLimits = new ArrayList<>();
+        List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements = new ArrayList<>();
+
+        for (Map<String, Object> roleSpec : roles) {
+            String roleName = (String) roleSpec.get("role_name");
+            Object ratingObj = roleSpec.get("rating");
+            Number maxWorkersObj = (Number) roleSpec.get("max_workers");
+
+            roleLimits.add(new Scheduler.ShiftSchedule.RoleLimit(roleName, maxWorkersObj.intValue()));
+
+            List<Integer> allowedRatings = new ArrayList<>();
+            if (ratingObj instanceof Number) {
+                int min = ((Number) ratingObj).intValue();
+                for (int r = min; r <= 5; r++) allowedRatings.add(r);
+            } else if (ratingObj instanceof String) {
+                String s = ((String) ratingObj).toLowerCase();
+                if (s.contains("any") || s.contains("all")) {
+                    for (int r = 1; r <= 5; r++) allowedRatings.add(r);
+                } else {
+                    try {
+                        int min = Integer.parseInt(s.replaceAll("[^0-9]", ""));
+                        for (int r = min; r <= 5; r++) allowedRatings.add(r);
+                    } catch (Exception e) {
+                        for (int r = 3; r <= 5; r++) allowedRatings.add(r);
+                    }
+                }
+            }
+            ratingRequirements.add(new Scheduler.ShiftSchedule.RatingRequirement(roleName, allowedRatings));
+        }
+
+        // ============ CHECK EXISTING ASSIGNMENTS PER DATE ============
+        System.out.println("\n   🔍 Checking for existing assignments in date range...");
+
+        // Build a map of employee+date -> shift for quick lookup
+        Map<String, String> employeeExistingAssignments = new HashMap<>();
+        Map<String, Integer> existingAssignmentsCount = new HashMap<>();
+
+        for (LocalDate date : workingDates) {
+            String dateStr = date.toString();
+            Map<String, List<String>> dayAssignments = shiftAssignments.get(dateStr);
+
+            if (dayAssignments != null) {
+                System.out.println("   📅 Found existing assignments for " + dateStr + ":");
+                for (Map.Entry<String, List<String>> entry : dayAssignments.entrySet()) {
+                    String shift = entry.getKey();
+                    List<String> employees = entry.getValue();
+
+                    System.out.println("      - " + shift + " shift: " + employees.size() + " employees");
+
+                    for (String empId : employees) {
+                        String key = empId + "-" + dateStr;
+                        employeeExistingAssignments.put(key, shift);
+                        existingAssignmentsCount.put(dateStr, existingAssignmentsCount.getOrDefault(dateStr, 0) + 1);
+                    }
+                }
+            }
+        }
+
+        // ============ SORT EMPLOYEES BY PRIORITY ============
+        boolean prioritizePermanent = Boolean.TRUE.equals(workingInput.get("prioritizePermanent"));
+        List<EmployeeInfo> sortedEmployees = new ArrayList<>(allEmployees.values());
+
+        // Sort by: Permanent first, then higher rating, then lower wage (cost optimization)
+        sortedEmployees.sort((a, b) -> {
+            if (prioritizePermanent) {
+                boolean aPerm = "Permanent".equalsIgnoreCase(a.getEmployeeType());
+                boolean bPerm = "Permanent".equalsIgnoreCase(b.getEmployeeType());
+                if (aPerm && !bPerm) return -1;
+                if (!aPerm && bPerm) return 1;
+            }
+
+            int ratingCompare = Integer.compare(b.getPerformanceRating(), a.getPerformanceRating());
+            if (ratingCompare != 0) return ratingCompare;
+
+            return Double.compare(a.getHourlyWage(), b.getHourlyWage());
+        });
+
+        // ============ BUILD PLANNING ENTITIES - CHECK PER DATE ============
+        List<Scheduler.EmployeeAssignment> planningEntities = new ArrayList<>();
+        Map<String, List<String>> skippedPerDate = new HashMap<>();
+        Map<String, Map<String, Integer>> roleCountsPerDate = new HashMap<>();
+
+        int totalPossibleAssignments = workingDates.size() * sortedEmployees.size();
+        int skippedCount = 0;
+        int entityCounter = 0;
+
+        Map<String, Set<String>> availableEmployeesPerDate = new HashMap<>();
+
+        for (LocalDate date : workingDates) {
+            String dateStr = date.toString();
+            List<String> skippedOnThisDate = new ArrayList<>();
+            availableEmployeesPerDate.put(dateStr, new HashSet<>());
+
+            Map<String, Integer> dailyRoleCounts = new HashMap<>();
+            for (Scheduler.ShiftSchedule.RoleLimit limit : roleLimits) {
+                dailyRoleCounts.put(limit.getRoleName(), 0);
+            }
+            roleCountsPerDate.put(dateStr, dailyRoleCounts);
+
+            for (EmployeeInfo emp : sortedEmployees) {
+                String empId = emp.getId();
+                String key = empId + "-" + dateStr;
+
+                if (employeeExistingAssignments.containsKey(key) && !overrideExisting) {
+                    skippedOnThisDate.add(emp.getName() + " (" + empId + ") - Already on " + employeeExistingAssignments.get(key) + " shift");
+                    skippedCount++;
+                    continue;
+                }
+
+                if (("Night".equals(shiftName) || "night".equalsIgnoreCase(shiftName))
+                        && "Female".equalsIgnoreCase(emp.getGender())) {
+                    skippedOnThisDate.add(emp.getName() + " (" + empId + ") - Female cannot work night shift");
+                    skippedCount++;
+                    continue;
+                }
+
+                String position = emp.getPosition();
+                boolean ratingOk = false;
+                for (Scheduler.ShiftSchedule.RatingRequirement req : ratingRequirements) {
+                    if (req.getRoleName().equals(position)) {
+                        ratingOk = req.getAllowedRatings().contains(emp.getPerformanceRating());
+                        break;
+                    }
+                }
+                if (!ratingOk) {
+                    skippedOnThisDate.add(emp.getName() + " (" + empId + ") - Rating " + emp.getPerformanceRating() +
+                            " doesn't meet requirement for " + position);
+                    skippedCount++;
+                    continue;
+                }
+
+                availableEmployeesPerDate.get(dateStr).add(empId);
+
+                Scheduler.EmployeeAssignment entity = new Scheduler.EmployeeAssignment(
+                        "entity-" + entityCounter++,
+                        emp.getId(),
+                        emp.getName(),
+                        dateStr,
+                        emp.getCategory(),
+                        emp.getGender(),
+                        emp.getDepartment(),
+                        emp.getPosition()
+                );
+
+                entity.setSkills(new HashSet<>(emp.getSkills()));
+                entity.setShiftColor(emp.getShiftColor());
+                entity.setHourlyWage(emp.getHourlyWage());
+                entity.setPerformanceRating(emp.getPerformanceRating());
+                entity.setEmployeeType(emp.getEmployeeType());
+                entity.setPermanentEmployee("Permanent".equalsIgnoreCase(emp.getEmployeeType()));
+                entity.setRequestedShift(shiftName);
+
+                planningEntities.add(entity);
+            }
+
+            if (!skippedOnThisDate.isEmpty()) {
+                skippedPerDate.put(dateStr, skippedOnThisDate);
+            }
+        }
+
+        System.out.println("\n   📊 Planning summary:");
+        System.out.println("      Total possible assignments: " + totalPossibleAssignments);
+        System.out.println("      Entities to plan: " + planningEntities.size());
+        System.out.println("      Skipped due to constraints: " + skippedCount);
+
+        // Check if ALL entities were skipped
+        if (!overrideExisting && planningEntities.isEmpty()) {
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("status", "error");
+            errorResponse.put("message", "No employees were assigned - all requested employees already have assignments or don't meet constraints");
+            errorResponse.put("error_type", "ALL_EMPLOYEES_SKIPPED");
+            errorResponse.put("start_date", startDateStr);
+            errorResponse.put("end_date", endDateStr);
+            errorResponse.put("shift_name", shiftName);
+            errorResponse.put("total_requested", existingUsers.size());
+            errorResponse.put("skipped_count", skippedCount);
+            errorResponse.put("skipped_by_date", skippedPerDate);
+
+            throw new Exception("No employees available for assignment");
+        }
+
+        // ============ CONFIGURE AND RUN SOLVER ============
+        List<String> possibleShifts = Arrays.asList(shiftName);
+
+        Scheduler.ShiftConstraints.setConfiguration(roleLimits, ratingRequirements);
+
+        Scheduler.ShiftSchedule problem = new Scheduler.ShiftSchedule(
+                planningEntities,
+                possibleShifts,
+                roleLimits,
+                ratingRequirements
+        );
+        problem.setRequestedShiftName(shiftName);
+        problem.setPrioritizePermanent(prioritizePermanent);
+
+        SolverConfig solverConfig = new SolverConfig()
+                .withSolutionClass(Scheduler.ShiftSchedule.class)
+                .withEntityClasses(Scheduler.EmployeeAssignment.class)
+                .withConstraintProviderClass(Scheduler.ShiftConstraints.class)
+                .withTerminationSpentLimit(Duration.ofSeconds(20));
+
+        SolverFactory<Scheduler.ShiftSchedule> solverFactory = SolverFactory.create(solverConfig);
+        Solver<Scheduler.ShiftSchedule> solver = solverFactory.buildSolver();
+
+        System.out.println("   🔧 Starting solver with " + planningEntities.size() + " entities...");
+
+        long solverStart = System.currentTimeMillis();
+        Scheduler.ShiftSchedule solved = solver.solve(problem);
+        long solverTimeMs = System.currentTimeMillis() - solverStart;
+        System.out.println("   ✅ Solver finished in " + (solverTimeMs / 1000.0) + " seconds. Score: " + solved.getScore());
+
+        // ============ APPLY ASSIGNMENTS AND GENERATE BREAK SCHEDULES ============
+        int assignedCount = 0;
+        Map<String, Map<String, Integer>> finalRoleCounts = new HashMap<>();
+        Map<String, List<Map<String, Object>>> assignmentDetails = new HashMap<>();
+        Map<String, Long> assignmentsByEmployeeType = new HashMap<>();
+        Map<String, Set<String>> assignedEmployeesPerDate = new HashMap<>();
+
+        List<BreakSchedule> breakSchedules = new ArrayList<>();
+
+        for (Scheduler.EmployeeAssignment ea : solved.getAssignments()) {
+            if (ea.getShift() == null) continue;
+
+            String d = ea.getDate();
+            String s = ea.getShift();
+            String eid = ea.getEmployeeId();
+
+            EmployeeInfo emp = allEmployees.get(eid);
+            if (emp == null) continue;
+
+            if ("Night".equals(s) && "Female".equalsIgnoreCase(emp.getGender())) {
+                continue;
+            }
+
+            String position = emp.getPosition();
+            Map<String, Integer> dayRoleCounts = finalRoleCounts.computeIfAbsent(d, k -> new HashMap<>());
+            int currentDayCount = dayRoleCounts.getOrDefault(position, 0);
+
+            boolean withinLimit = true;
+            for (Scheduler.ShiftSchedule.RoleLimit limit : roleLimits) {
+                if (limit.getRoleName().equals(position)) {
+                    withinLimit = currentDayCount < limit.getMaxWorkers();
+                    break;
+                }
+            }
+
+            if (!withinLimit) continue;
+
+            shiftAssignments
+                    .computeIfAbsent(d, k -> new HashMap<>())
+                    .computeIfAbsent(s, k -> new ArrayList<>())
+                    .add(eid);
+
+            String breakStart = null;
+            String breakEnd = null;
+            String breakSlot = null;
+
+            if (scheduleBreaks) {
+                ShiftTime shiftTime = SHIFT_TIMES.get(s);
+                if (shiftTime == null) {
+                    shiftTime = new ShiftTime(startLocalTime, endLocalTime);
+                }
+
+                BreakSchedule breakSchedule = new BreakSchedule(
+                        eid,
+                        emp.getName(),
+                        d,
+                        s,
+                        shiftTime.getStartTime(),
+                        shiftTime.getEndTime()
+                );
+
+                if (breakAfterHours != 4) {
+                    LocalTime customBreakStart = shiftTime.getStartTime().plusHours(breakAfterHours);
+                    LocalTime customBreakEnd = customBreakStart.plusMinutes(breakDurationMinutes);
+                    breakSchedule.setBreakStartTime(customBreakStart);
+                    breakSchedule.setBreakEndTime(customBreakEnd);
+                }
+
+                breakSchedules.add(breakSchedule);
+
+                breakStart = breakSchedule.getBreakStart();
+                breakEnd = breakSchedule.getBreakEnd();
+                breakSlot = breakSchedule.getFormattedBreakSlot();
+            }
+
+            // Sync to MySQL
+            mysqlService.syncAssignment(
+                    d, s, eid,
+                    ea.getEmployeeName(),
+                    ea.getPosition(),
+                    emp.getEmployeeType(),
+                    emp.getGender(),
+                    emp.getPerformanceRating()
+            );
+
+            if (emp.getEmployeeType() != null) {
+                mysqlService.syncAssignment(
+                        d, s, eid,
+                        ea.getEmployeeName(), ea.getPosition(),
+                        emp.getEmployeeType(), emp.getGender(),
+                        emp.getPerformanceRating()
+                );
+            }
+
+            assignedEmployeesPerDate.computeIfAbsent(d, k -> new HashSet<>()).add(eid);
+
+            Map<String, Object> detail = new HashMap<>();
+            detail.put("employeeId", eid);
+            detail.put("employeeName", ea.getEmployeeName());
+            detail.put("role", position);
+            detail.put("rating", emp.getPerformanceRating());
+            detail.put("wage", emp.getHourlyWage());
+            detail.put("gender", emp.getGender());
+            detail.put("employeeType", emp.getEmployeeType());
+
+            if (breakStart != null) {
+                Map<String, Object> breakInfo = new HashMap<>();
+                breakInfo.put("breakStart", breakStart);
+                breakInfo.put("breakEnd", breakEnd);
+                breakInfo.put("breakDuration", breakDurationMinutes);
+                breakInfo.put("breakType", "MANDATORY");
+                breakInfo.put("breakSlot", breakSlot);
+                detail.put("break", breakInfo);
+            }
+
+            assignmentDetails.computeIfAbsent(d, k -> new ArrayList<>()).add(detail);
+
+            String empType = emp.getEmployeeType();
+            assignmentsByEmployeeType.put(empType, assignmentsByEmployeeType.getOrDefault(empType, 0L) + 1);
+
+            assignedCount++;
+            dayRoleCounts.put(position, currentDayCount + 1);
+        }
+
+        // Save JSON to file
+        saveAssignments();
+
+        // ============ BUILD RESPONSE ============
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "success");
+        response.put("shift_name", shiftName);
+        response.put("period", startDateStr + " to " + endDateStr);
+        response.put("shift_time", startTime + " - " + endTime);
+        response.put("total_working_days", workingDates.size());
+        response.put("solver_score", solved.getScore().toString());
+        response.put("solver_time_seconds", solverTimeMs / 1000.0);
+        response.put("new_assignments_made", assignedCount);
+        response.put("entities_planned", planningEntities.size());
+        response.put("total_possible_assignments", totalPossibleAssignments);
+        response.put("skipped_count", skippedCount);
+        response.put("override_used", overrideExisting);
+        response.put("prioritize_permanent", prioritizePermanent);
+        response.put("breakSchedulesCount", breakSchedules.size());
+        response.put("breakConfiguration", Map.of(
+                "scheduleBreaks", scheduleBreaks,
+                "breakDurationMinutes", breakDurationMinutes,
+                "breakAfterHours", breakAfterHours
+        ));
+
+        // Add skipped by date information
+        if (!skippedPerDate.isEmpty()) {
+            Map<String, Object> skippedInfo = new HashMap<>();
+            for (Map.Entry<String, List<String>> entry : skippedPerDate.entrySet()) {
+                skippedInfo.put(entry.getKey(), entry.getValue());
+            }
+            response.put("skipped_by_date", skippedInfo);
+        }
+
+        // Add role statistics
+        Map<String, Object> roleStats = new HashMap<>();
+        for (String role : roleLimits.stream().map(rl -> rl.getRoleName()).collect(Collectors.toSet())) {
+            Map<String, Object> stats = new HashMap<>();
+            long roleCount = assignmentDetails.values().stream()
+                    .flatMap(List::stream)
+                    .filter(a -> role.equals(a.get("role")))
+                    .count();
+
+            double totalWage = assignmentDetails.values().stream()
+                    .flatMap(List::stream)
+                    .filter(a -> role.equals(a.get("role")))
+                    .mapToDouble(a -> (Double) a.get("wage"))
+                    .sum();
+
+            double avgWage = roleCount > 0 ? totalWage / roleCount : 0;
+
+            stats.put("assignments", roleCount);
+            stats.put("average_wage", String.format("%.2f", avgWage));
+
+            int maxWorkers = roleLimits.stream()
+                    .filter(rl -> rl.getRoleName().equals(role))
+                    .findFirst()
+                    .map(Scheduler.ShiftSchedule.RoleLimit::getMaxWorkers)
+                    .orElse(0);
+            stats.put("max_per_day", maxWorkers);
+
+            roleStats.put(role, stats);
+        }
+        response.put("role_statistics", roleStats);
+
+        // Add assignments by employee type
+        response.put("assignments_by_employee_type", assignmentsByEmployeeType);
+
+        // Add daily summary
+        List<Map<String, Object>> dailySummary = new ArrayList<>();
+
+        Map<String, BreakSchedule> breakLookup = new HashMap<>();
+        for (BreakSchedule bs : breakSchedules) {
+            String key = bs.getEmployeeId() + "-" + bs.getDate();
+            breakLookup.put(key, bs);
+        }
+
+        for (String date : workingDates.stream().map(LocalDate::toString).sorted().collect(Collectors.toList())) {
+            if (assignmentDetails.containsKey(date) || assignedEmployeesPerDate.containsKey(date)) {
+                Map<String, Object> daySummary = new HashMap<>();
+                daySummary.put("date", date);
+
+                List<Map<String, Object>> assignmentsWithBreaks = new ArrayList<>();
+                if (assignmentDetails.containsKey(date)) {
+                    for (Map<String, Object> assignment : assignmentDetails.get(date)) {
+                        Map<String, Object> assignmentWithBreak = new LinkedHashMap<>(assignment);
+
+                        String employeeId = (String) assignment.get("employeeId");
+                        String lookupKey = employeeId + "-" + date;
+                        BreakSchedule breakSchedule = breakLookup.get(lookupKey);
+
+                        if (breakSchedule != null) {
+                            Map<String, Object> breakInfo = new LinkedHashMap<>();
+                            breakInfo.put("breakStart", breakSchedule.getBreakStart());
+                            breakInfo.put("breakEnd", breakSchedule.getBreakEnd());
+                            breakInfo.put("breakDuration", breakSchedule.getBreakDurationMinutes());
+                            breakInfo.put("breakType", breakSchedule.getBreakType());
+                            breakInfo.put("breakSlot", breakSchedule.getFormattedBreakSlot());
+
+                            assignmentWithBreak.put("break", breakInfo);
+                        }
+
+                        assignmentsWithBreaks.add(assignmentWithBreak);
+                    }
+                }
+
+                daySummary.put("assignments", assignmentsWithBreaks);
+                daySummary.put("count", assignmentsWithBreaks.size());
+
+                Map<String, Integer> roleCounts = new HashMap<>();
+                for (Map<String, Object> assignment : assignmentsWithBreaks) {
+                    String role = (String) assignment.get("role");
+                    roleCounts.put(role, roleCounts.getOrDefault(role, 0) + 1);
+                }
+                daySummary.put("role_counts", roleCounts);
+
+                dailySummary.add(daySummary);
+            } else {
+                Map<String, Object> daySummary = new HashMap<>();
+                daySummary.put("date", date);
+                daySummary.put("assignments", new ArrayList<>());
+                daySummary.put("count", 0);
+                daySummary.put("role_counts", new HashMap<>());
+                dailySummary.add(daySummary);
+            }
+        }
+
+        response.put("daily_summary", dailySummary);
+
+        // Build message
+        StringBuilder message = new StringBuilder();
+        message.append("Successfully assigned shifts for ").append(workingDates.size()).append(" days. ");
+        message.append("Total assignments: ").append(assignedCount).append(". ");
+
+        if (scheduleBreaks && !breakSchedules.isEmpty()) {
+            message.append("Scheduled ").append(breakSchedules.size()).append(" breaks (")
+                    .append(breakDurationMinutes).append(" mins after ").append(breakAfterHours).append(" hours). ");
+        }
+
+        if (skippedCount > 0) {
+            message.append("Skipped ").append(skippedCount).append(" assignments due to existing assignments or constraints. ");
+        }
+
+        response.put("message", message.toString());
+
+        System.out.println("\n   ✅ Assignment Complete for " + shiftName + "!");
+        System.out.println("      Total assignments: " + assignedCount);
+        System.out.println("      Breaks scheduled: " + breakSchedules.size());
+
+        return response;
+    }
     // NEW: Helper method to get employee type priority
     private int getEmployeeTypePriority(String employeeType) {
         if (employeeType == null) return 0;

@@ -5,7 +5,7 @@ steps of project setup and run
 
 2) Create Backend(TimeFold + Quarkus):
    A)Create Project by using this Command:npx quarkus-cli create app com.scheduler:timefold-solver --extension=rest,resteasy-reactive-jackson,timefold-solver
-   B) Go to folder: cd timefold-solver
+   B)Go to folder: cd timefold-solver
    D)Run backend by using this Command ./mvnw quarkus:dev ,If using Intellij click on play button on top right corner
 
 3) Create Frontend(Bryntum + React)

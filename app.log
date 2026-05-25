@@ -1,0 +1,126 @@
+🚀 Starting Shift Scheduler...
+🌐 Host: 0.0.0.0 (all network interfaces)
+🔌 Port: 8083
+📁 Data directory: /Users/xtensibleimac/Desktop/TimeFold/data
+__  ____  __  _____   ___  __ ____  ______ 
+ --/ __ \/ / / / _ | / _ \/ //_/ / / / __/ 
+ -/ /_/ / /_/ / __ |/ , _/ ,< / /_/ /\ \   
+--\___\_\____/_/ |_/_/|_/_/|_|\____/___/   
+2026-02-09 16:30:37,511 WARN  [io.qua.config] (main) Unrecognized configuration key "quarkus.http.static-resources.enabled" was provided; it will be ignored; verify that the dependency extension for this configuration is set or that you did not make a typo
+2026-02-09 16:30:37,512 WARN  [io.qua.config] (main) Unrecognized configuration key "quarkus.http.static-resources.path-prefix" was provided; it will be ignored; verify that the dependency extension for this configuration is set or that you did not make a typo
+2026-02-09 16:30:40,486 INFO  [io.quarkus] (main) TimeFold 1.0-SNAPSHOT on JVM (powered by Quarkus 3.15.1) started in 4.109s. Listening on: http://0.0.0.0:8083
+2026-02-09 16:30:40,487 INFO  [io.quarkus] (main) Profile prod activated. 
+2026-02-09 16:30:40,487 INFO  [io.quarkus] (main) Installed features: [cdi, rest, rest-jackson, smallrye-context-propagation, vertx]
+📂 Loading assignments from file: /Users/xtensibleimac/Desktop/TimeFold/shift_assignments.json
+📦 Loading new format (with employee info)
+✅ Loaded 5 days of assignments and 10 employee records
+📊 Total individual assignments: 30
+🚀 ShiftApp started - Manual shift assignment mode enabled
+📊 Loaded assignments summary:
+   - Days with assignments: 5
+   - Employee records loaded: 10
+
+📊 Loaded Assignments Summary:
+==============================
+
+📅 Date: 2026-01-19
+    Morning shift: 6 employees
+      • Meena Joshi (HEL005) - Helper - Female
+      • Priya Verma (CNC004) - CNC Operator - Female
+      • Sunita Sharma (CNC002) - CNC Operator - Female
+      ... and 3 more
+
+📅 Date: 2026-01-20
+    Morning shift: 6 employees
+      • Meena Joshi (HEL005) - Helper - Female
+      • Priya Verma (CNC004) - CNC Operator - Female
+      • Sunita Sharma (CNC002) - CNC Operator - Female
+      ... and 3 more
+
+📅 Date: 2026-01-21
+    Morning shift: 6 employees
+      • Meena Joshi (HEL005) - Helper - Female
+      • Priya Verma (CNC004) - CNC Operator - Female
+      • Sunita Sharma (CNC002) - CNC Operator - Female
+      ... and 3 more
+
+📅 Date: 2026-01-22
+    Morning shift: 6 employees
+      • Meena Joshi (HEL005) - Helper - Female
+      • Priya Verma (CNC004) - CNC Operator - Female
+      • Sunita Sharma (CNC002) - CNC Operator - Female
+      ... and 3 more
+
+📅 Date: 2026-01-23
+    Morning shift: 6 employees
+      • Meena Joshi (HEL005) - Helper - Female
+      • Priya Verma (CNC004) - CNC Operator - Female
+      • Sunita Sharma (CNC002) - CNC Operator - Female
+      ... and 3 more
+
+📈 Summary:
+   Total days with assignments: 5
+   Total individual assignments: 30
+   Total employee records: 10
+   Morning shift assignments: 30
+✅ System ready. Use GET /shifts to view assignments.
+=== GET /shifts called ===
+📊 Total assignments stored: 5 days
+👥 Employee records: 10
+📋 Returning all assignments
+✅ Total slots: 5
+✅ Total assignments: 30
+=== GET /shifts called ===
+📊 Total assignments stored: 5 days
+👥 Employee records: 10
+📋 Returning all assignments
+✅ Total slots: 5
+✅ Total assignments: 30
+=== GET /shifts called ===
+📊 Total assignments stored: 5 days
+👥 Employee records: 10
+📋 Returning all assignments
+✅ Total slots: 5
+✅ Total assignments: 30
+=== GET /shifts called ===
+📊 Total assignments stored: 5 days
+👥 Employee records: 10
+📋 Returning all assignments
+✅ Total slots: 5
+✅ Total assignments: 30
+=== GET /shifts called ===
+📊 Total assignments stored: 5 days
+👥 Employee records: 10
+📋 Returning all assignments
+✅ Total slots: 5
+✅ Total assignments: 30
+=== GET /shifts called ===
+📊 Total assignments stored: 5 days
+👥 Employee records: 10
+📋 Returning all assignments
+✅ Total slots: 5
+✅ Total assignments: 30
+=== GET /shifts called ===
+📊 Total assignments stored: 5 days
+👥 Employee records: 10
+📋 Returning all assignments
+✅ Total slots: 5
+✅ Total assignments: 30
+=== GET /shifts called ===
+📊 Total assignments stored: 5 days
+👥 Employee records: 10
+📋 Returning all assignments
+✅ Total slots: 5
+✅ Total assignments: 30
+=== GET /shifts called ===
+📊 Total assignments stored: 5 days
+👥 Employee records: 10
+📋 Returning all assignments
+✅ Total slots: 5
+✅ Total assignments: 30
+=== GET /shifts called ===
+📊 Total assignments stored: 5 days
+👥 Employee records: 10
+📋 Returning all assignments
+✅ Total slots: 5
+✅ Total assignments: 30
