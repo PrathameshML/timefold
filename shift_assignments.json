@@ -1,153 +1,113 @@
 {
   "assignments" : {
     "2026-01-20" : {
-      "Morning" : [ "103", "102" ]
-    },
-    "2026-01-22" : {
-      "Morning" : [ "103", "102" ]
+      "Morning" : [ "101", "103", "102", "104" ]
     },
     "2026-01-19" : {
-      "Morning" : [ "103", "102" ]
+      "Morning" : [ "101", "103", "102", "104" ]
+    },
+    "2026-01-22" : {
+      "Morning" : [ "101", "103", "102", "104" ]
     },
     "2026-01-21" : {
-      "Morning" : [ "103", "102" ]
+      "Morning" : [ "101", "103", "102", "104" ]
     },
     "2026-01-23" : {
-      "Morning" : [ "103", "102" ]
+      "Morning" : [ "101", "103", "102", "104" ]
     }
   },
   "employeeInfo" : {
     "110" : {
       "performanceRating" : 3,
       "gender" : "Female",
-      "phone" : "+91 9175575260",
       "hourlyWage" : 25.0,
       "name" : "Sushila Sharma",
       "id" : "110",
-      "managerId" : "MGR001",
       "position" : "Employee",
-      "category" : null,
-      "department" : "Operations",
-      "email" : "sushila.sharma@company.com"
+      "category" : null
     },
     "101" : {
       "performanceRating" : 5,
       "gender" : "Male",
-      "phone" : "+91 9539993670",
-      "hourlyWage" : 11.0,
+      "hourlyWage" : 10.0,
       "name" : "Rajesh Kumar",
       "id" : "101",
-      "managerId" : "MGR001",
       "position" : "CNC Operator",
-      "category" : "Permanent",
-      "department" : "Operations",
-      "email" : "rajesh.kumar@company.com"
+      "category" : "Permanent"
     },
     "102" : {
       "performanceRating" : 4,
       "gender" : "Female",
-      "phone" : "+91 9238141081",
       "hourlyWage" : 8.0,
       "name" : "Priya Sharma",
       "id" : "102",
-      "managerId" : "MGR001",
       "position" : "Helper",
-      "category" : "Permanent",
-      "department" : "Operations",
-      "email" : "priya.sharma@company.com"
+      "category" : "Permanent"
     },
     "103" : {
       "performanceRating" : 5,
       "gender" : "Male",
-      "phone" : "+91 9001234567",
-      "hourlyWage" : 10.0,
+      "hourlyWage" : 42.0,
       "name" : "Amit Patel",
       "id" : "103",
-      "managerId" : "MGR001",
       "position" : "CNC Operator",
-      "category" : "Permanent",
-      "department" : "Operations",
-      "email" : "amit.patel@company.com"
+      "category" : "Permanent"
     },
     "104" : {
       "performanceRating" : 4,
       "gender" : "Female",
-      "phone" : "+91 9001234567",
       "hourlyWage" : 16.0,
       "name" : "Radha Kumari",
       "id" : "104",
-      "managerId" : "MGR001",
       "position" : "Helper",
-      "category" : "Permanent",
-      "department" : "Operations",
-      "email" : "radha.kumari@company.com"
+      "category" : "Permanent"
     },
     "105" : {
       "performanceRating" : 5,
       "gender" : "Male",
-      "phone" : "+91 9001234567",
       "hourlyWage" : 10.0,
       "name" : "Raj Kumar",
       "id" : "105",
-      "managerId" : "MGR001",
       "position" : "CNC Operator",
-      "category" : "Permanent",
-      "department" : "Operations",
-      "email" : "raj.kumar@company.com"
+      "category" : "Permanent"
     },
     "106" : {
       "performanceRating" : 4,
       "gender" : "Female",
-      "phone" : "+91 9001234567",
       "hourlyWage" : 8.0,
       "name" : "Rani Sharma",
       "id" : "106",
-      "managerId" : "MGR001",
       "position" : "Helper",
-      "category" : "Permanent",
-      "department" : "Operations",
-      "email" : "rani.sharma@company.com"
+      "category" : "Permanent"
     },
     "107" : {
       "performanceRating" : 5,
       "gender" : "Male",
-      "phone" : "+91 9001234567",
       "hourlyWage" : 42.0,
       "name" : "Anish Patel",
       "id" : "107",
-      "managerId" : "MGR001",
       "position" : "CNC Operator",
-      "category" : "Permanent",
-      "department" : "Operations",
-      "email" : "anish.patel@company.com"
+      "category" : "Permanent"
     },
     "108" : {
       "performanceRating" : 4,
       "gender" : "Female",
-      "phone" : "+91 9001234567",
       "hourlyWage" : 16.0,
       "name" : "Riya Tyagi",
       "id" : "108",
-      "managerId" : "MGR001",
       "position" : "Helper",
-      "category" : "Permanent",
-      "department" : "Operations",
-      "email" : "riya.tyagi@company.com"
+      "category" : "Permanent"
     },
     "109" : {
       "performanceRating" : 3,
       "gender" : "Male",
-      "phone" : "+91 9781804001",
       "hourlyWage" : 25.0,
       "name" : "Shyam Kumar",
       "id" : "109",
-      "managerId" : "MGR001",
       "position" : "Employee",
-      "category" : null,
-      "department" : "Operations",
-      "email" : "shyam.kumar@company.com"
+      "category" : null
     }
   },
-  "savedAt" : "2026-03-12T17:23:05.710091",
+  "savedAt" : "2026-05-29T10:03:07.805890600",
   "version" : "1.2"
 }

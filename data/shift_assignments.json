@@ -1,10 +1,61 @@
 {
   "assignments" : {
+    "2026-01-20" : {
+      "Morning" : [ "101", "103", "102", "104" ]
+    },
     "2026-05-07" : {
       "Event Lobby-12 - Supervisor" : [ "5" ]
+    },
+    "2026-01-22" : {
+      "Morning" : [ "101", "103", "102", "104" ]
+    },
+    "2026-01-19" : {
+      "Morning" : [ "101", "103", "102", "104" ]
+    },
+    "2026-01-21" : {
+      "Morning" : [ "101", "103", "102", "104" ]
+    },
+    "2026-01-23" : {
+      "Morning" : [ "101", "103", "102", "104" ]
     }
   },
   "employeeInfo" : {
+    "101" : {
+      "performanceRating" : 5,
+      "gender" : "Male",
+      "hourlyWage" : 10.0,
+      "name" : "Rajesh Kumar",
+      "id" : "101",
+      "position" : "CNC Operator",
+      "category" : "Permanent"
+    },
+    "102" : {
+      "performanceRating" : 4,
+      "gender" : "Female",
+      "hourlyWage" : 8.0,
+      "name" : "Priya Sharma",
+      "id" : "102",
+      "position" : "Helper",
+      "category" : "Permanent"
+    },
+    "103" : {
+      "performanceRating" : 5,
+      "gender" : "Male",
+      "hourlyWage" : 42.0,
+      "name" : "Amit Patel",
+      "id" : "103",
+      "position" : "CNC Operator",
+      "category" : "Permanent"
+    },
+    "104" : {
+      "performanceRating" : 4,
+      "gender" : "Female",
+      "hourlyWage" : 16.0,
+      "name" : "Radha Kumari",
+      "id" : "104",
+      "position" : "Helper",
+      "category" : "Permanent"
+    },
     "5" : {
       "performanceRating" : 4,
       "gender" : "Male",
@@ -33,6 +84,6 @@
       "category" : "Permanent"
     }
   },
-  "savedAt" : "2026-04-22T12:21:25.181305",
+  "savedAt" : "2026-05-27T15:19:22.539403700",
   "version" : "1.2"
 }
