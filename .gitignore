@@ -3,11 +3,9 @@
 # !**/src/main/**/target/
 # !**/src/test/**/target/
 
-
 target/*
 !target/quarkus-app/
 !target/quarkus-app/**
-!target/TimeFold-1.0-SNAPSHOT.jar
 
 ### IntelliJ IDEA ###
 .idea/modules.xml
