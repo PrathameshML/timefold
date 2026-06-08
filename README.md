@@ -3,6 +3,7 @@ steps of project setup and run
    A)Install Java 21 (JDK)
    B)Install Maven 
 
+
 2) Create Backend(TimeFold + Quarkus):
    A)Create Project by using this Command:npx quarkus-cli create app com.scheduler:timefold-solver --extension=rest,resteasy-reactive-jackson,timefold-solver
    B)Go to folder: cd timefold-solver

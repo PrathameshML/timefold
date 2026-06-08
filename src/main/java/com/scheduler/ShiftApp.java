@@ -40,79 +40,22 @@ import static com.scheduler.ShiftApp.AttendanceService.sendNotification;
 @Path("/")
 public class ShiftApp {
     private static void loadAssignments() {
-        ObjectMapper mapper = new ObjectMapper();
-        File file = new File(ASSIGNMENTS_FILE);
+        System.out.println("📂 Loading data directly from MySQL database...");
+        
+        employeeInfo.clear();
+        employeeInfo.putAll(mysqlService.loadAllEmployees());
+        
+        shiftAssignments.clear();
+        shiftAssignments.putAll(mysqlService.loadAllAssignments());
+        
+        shiftTimesCache.clear();
+        shiftTimesCache.putAll(mysqlService.loadAllShiftTimes());
+        
+        System.out.println("✅ Loaded " + shiftAssignments.size() + " days of assignments and " +
+                employeeInfo.size() + " employee records from MySQL");
 
-        if (file.exists()) {
-            try {
-                System.out.println("📂 Loading assignments from file: " + ASSIGNMENTS_FILE);
-
-                // Try to read as generic Map first to check format
-                Map<String, Object> data = mapper.readValue(file, new TypeReference<Map<String, Object>>() {});
-
-                if (data.containsKey("assignments") && data.containsKey("employeeInfo")) {
-                    // New format with employee info
-                    System.out.println("📦 Loading new format (with employee info)");
-
-                    // Load assignments
-                    @SuppressWarnings("unchecked")
-                    Map<String, Map<String, List<String>>> assignments =
-                            (Map<String, Map<String, List<String>>>) data.get("assignments");
-                    shiftAssignments.clear();
-                    shiftAssignments.putAll(assignments);
-
-                    // Load employee info
-                    @SuppressWarnings("unchecked")
-                    Map<String, Map<String, Object>> employeeInfoData =
-                            (Map<String, Map<String, Object>>) data.get("employeeInfo");
-
-                    employeeInfo.clear();
-                    for (Map.Entry<String, Map<String, Object>> entry : employeeInfoData.entrySet()) {
-                        String empId = entry.getKey();
-                        Map<String, Object> empData = entry.getValue();
-
-                        EmployeeInfo emp = new EmployeeInfo();
-                        emp.setId(empId);
-                        emp.setName((String) empData.getOrDefault("name", "Employee " + empId));
-                        emp.setCategory((String) empData.getOrDefault("category", "Regular"));
-                        emp.setGender((String) empData.getOrDefault("gender", "Male"));
-                        emp.setHourlyWage(((Number) empData.getOrDefault("hourlyWage", 25.0)).doubleValue());
-                        emp.setPosition((String) empData.getOrDefault("position", "Worker"));
-                        emp.setPerformanceRating(((Number) empData.getOrDefault("performanceRating", 3)).intValue());
-
-                        employeeInfo.put(empId, emp);
-                    }
-
-                    System.out.println("✅ Loaded " + shiftAssignments.size() + " days of assignments and " +
-                            employeeInfo.size() + " employee records");
-
-                } else {
-                    // Legacy format (assignments only)
-                    System.out.println("📦 Loading legacy format (assignments only)");
-                    TypeReference<HashMap<String, HashMap<String, List<String>>>> typeRef =
-                            new TypeReference<>() {};
-                    HashMap<String, HashMap<String, List<String>>> loaded = mapper.readValue(file, typeRef);
-                    shiftAssignments.clear();
-                    shiftAssignments.putAll(loaded);
-                    System.out.println("✅ Successfully loaded " + shiftAssignments.size() + " days of assignments");
-                }
-
-                // Count total assignments
-                int totalAssignments = 0;
-                for (Map<String, List<String>> dayAssignments : shiftAssignments.values()) {
-                    for (List<String> employees : dayAssignments.values()) {
-                        totalAssignments += employees.size();
-                    }
-                }
-                System.out.println("📊 Total individual assignments: " + totalAssignments);
-
-            } catch (IOException e) {
-                System.err.println("❌ Failed to load assignments: " + e.getMessage());
-                e.printStackTrace();
-            }
-        } else {
-            System.out.println("📄 No assignments file found, starting fresh");
-        }
+        int totalAssignments = mysqlService.getTotalAssignmentCount();
+        System.out.println("📊 Total individual assignments: " + totalAssignments);
     }
 
 
@@ -148,55 +91,19 @@ public class ShiftApp {
     }
 
     private static void saveAssignments() {
-        ObjectMapper mapper = new ObjectMapper();
-        try {
-            File file = new File(ASSIGNMENTS_FILE);
-
-            // Convert employeeInfo to a serializable map
-            Map<String, Map<String, Object>> employeeInfoSerializable = new HashMap<>();
-            for (Map.Entry<String, EmployeeInfo> entry : employeeInfo.entrySet()) {
-                EmployeeInfo emp = entry.getValue();
-                Map<String, Object> empData = new HashMap<>();
-                empData.put("id", emp.getId());
-                empData.put("name", emp.getName());
-                empData.put("category", emp.getCategory());
-                empData.put("gender", emp.getGender());
-                empData.put("hourlyWage", emp.getHourlyWage());
-                empData.put("position", emp.getPosition());
-                empData.put("performanceRating", emp.getPerformanceRating());
-
-                employeeInfoSerializable.put(entry.getKey(), empData);
-            }
-
-            // Create a complete data structure
-            Map<String, Object> completeData = new HashMap<>();
-            completeData.put("assignments", shiftAssignments);
-            completeData.put("employeeInfo", employeeInfoSerializable);
-            completeData.put("savedAt", LocalDateTime.now().toString());
-            completeData.put("version", "1.2");
-
-            mapper.writerWithDefaultPrettyPrinter().writeValue(file, completeData);
-
-            System.out.println("💾 Saved " + shiftAssignments.size() + " days of assignments");
-            System.out.println("💾 Saved " + employeeInfo.size() + " employee records");
-            System.out.println("📁 Saved to: " + ASSIGNMENTS_FILE);
-
-            // Count total assignments
-            int totalAssignments = 0;
-            for (Map<String, List<String>> dayAssignments : shiftAssignments.values()) {
-                for (List<String> employees : dayAssignments.values()) {
-                    totalAssignments += employees.size();
-                }
-            }
-            System.out.println("📊 Total individual assignments: " + totalAssignments);
-
-        } catch (IOException e) {
-            System.err.println("❌ Failed to save assignments: " + e.getMessage());
-            e.printStackTrace();
+        // We now persist entirely to MySQL instead of JSON.
+        // Sync any new or updated employees to the DB.
+        for (EmployeeInfo emp : employeeInfo.values()) {
+            mysqlService.syncEmployee(
+                emp.getId(), emp.getName(), emp.getPosition(),
+                emp.getCategory(), emp.getGender(),
+                emp.getHourlyWage(), emp.getPerformanceRating()
+            );
         }
     }
     @PostConstruct
     public void init() {
+        mysqlService = injectedMysqlService;
         // Load assignments from file FIRST
         loadAssignments();
 
@@ -210,6 +117,7 @@ public class ShiftApp {
 
         System.out.println("✅ System ready. Use GET /shifts to view assignments.");
     }
+
 
     private void displayLoadedAssignments() {
         System.out.println("\n📊 Loaded Assignments Summary:");
@@ -650,10 +558,12 @@ public class ShiftApp {
 
     }
 
+    public record ShiftTimes(String startTime, String endTime) {}
+
     // Store employee shifts and leaves - make them static so they persist
 //    private static final Map<String, String> employeeShifts = new HashMap<>();
     private static final Map<String, Map<String, List<String>>> shiftAssignments = new HashMap<>();  // day -> shift -> list of employee IDs
-    private static String ASSIGNMENTS_FILE = System.getProperty("app.data.dir", System.getProperty("user.dir")) + "/shift_assignments.json";
+    private static final Map<String, Map<String, ShiftTimes>> shiftTimesCache = new HashMap<>(); // day -> shift -> times
     private static final Map<String, List<LeaveRecord>> employeeLeaves = new HashMap<>();
     private static final Map<String, EmployeeInfo> employeeInfo = new HashMap<>();
 
@@ -679,11 +589,12 @@ public class ShiftApp {
     private static final Map<String, OTCoverageAssignment> otCoverageAssignments = new HashMap<>();
 
     // NEW: MySQL Service for database synchronization
-    private static final MySQLService mysqlService = new MySQLService();
-    public static void setDataDirectory(String path) {
-        ASSIGNMENTS_FILE = path + "/shift_assignments.json";
-        System.out.println(" Set data directory to: " + ASSIGNMENTS_FILE);
-    }
+    private static MySQLService mysqlService;
+
+    @jakarta.inject.Inject
+    MySQLService injectedMysqlService;
+
+
     // Shift time configuration class
     public static class ShiftTime {
         private final LocalTime startTime;
@@ -2150,7 +2061,7 @@ public class ShiftApp {
             String todayStr = today.toString();
 
             if (employeeLeaves.containsKey(employeeId) &&
-                    employeeLeaves.get(employeeId).contains(todayStr)) {
+                    employeeLeaves.get(employeeId).stream().anyMatch(lr -> lr.getDate().equals(todayStr))) {
                 EmployeeInfo empInfo = employeeInfo.get(employeeId);
                 System.out.println("❌ CLOCK-IN FAILED: " + empInfo.getName() + " is on leave today");
                 throw new IllegalStateException("Employee " + employeeId + " is on leave today");
@@ -3086,7 +2997,11 @@ public class ShiftApp {
     public Response addEmployee(EmployeeInfo employee) {
         try {
             employeeInfo.put(employee.getId(), employee);
-            System.out.println("✅ Added employee: " + employee.getName());
+            
+            // Sync the new employee to MySQL
+            saveAssignments();
+            
+            System.out.println("✅ Added employee and synced to DB: " + employee.getName());
             return Response.ok(Map.of("status", "success", "employee", employee)).build();
         } catch (Exception e) {
             e.printStackTrace();
@@ -3170,7 +3085,7 @@ public class ShiftApp {
 
                 // Check if employee is on leave
                 boolean isOnLeave = employeeLeaves.containsKey(employeeId) &&
-                        employeeLeaves.get(employeeId).contains(todayStr);
+                        employeeLeaves.get(employeeId).stream().anyMatch(lr -> lr.getDate().equals(todayStr));
 
                 if (isOnLeave) {
                     System.out.println("❌ " + empInfo.getName() + " (" + employeeId + ") is on leave");
@@ -3317,7 +3232,7 @@ public class ShiftApp {
 
             // 2. Check if employee is on leave today
             if (employeeLeaves.containsKey(employeeId) &&
-                    employeeLeaves.get(employeeId).contains(todayStr)) {
+                    employeeLeaves.get(employeeId).stream().anyMatch(lr -> lr.getDate().equals(todayStr))) {
                 System.out.println("❌ Employee on leave: " + employeeId + " on " + todayStr);
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Employee is on leave today"))
@@ -3474,7 +3389,7 @@ public class ShiftApp {
 
             // Check if employee is on leave
             if (employeeLeaves.containsKey(employeeId) &&
-                    employeeLeaves.get(employeeId).contains(todayStr)) {
+                    employeeLeaves.get(employeeId).stream().anyMatch(lr -> lr.getDate().equals(todayStr))) {
                 return Response.ok(Map.of(
                         "hasShift", false,
                         "onLeave", true,
@@ -4400,7 +4315,12 @@ public class ShiftApp {
         if (employeesObj == null) {
             int removedCount = employeeInfo.size();
             employeeInfo.clear();
-            saveAssignments(); // Save to persist the empty state
+            
+            // Delete from MySQL
+            mysqlService.clearAllEmployees();
+            mysqlService.clearAllAssignments();
+            
+            saveAssignments(); // Save to persist the empty state (now optional)
 
             System.out.println("🗑️ Cleared ALL employee records (" + removedCount + " employees)");
 
@@ -4416,6 +4336,11 @@ public class ShiftApp {
                 ("ALL".equalsIgnoreCase((String) employeesObj) || "*".equals(employeesObj))) {
             int removedCount = employeeInfo.size();
             employeeInfo.clear();
+            
+            // Delete from MySQL
+            mysqlService.clearAllEmployees();
+            mysqlService.clearAllAssignments();
+            
             saveAssignments();
 
             System.out.println("🗑️ Cleared ALL employee records using 'ALL' keyword (" + removedCount + " employees)");
@@ -4458,6 +4383,11 @@ public class ShiftApp {
         for (String empId : employeesToRemove) {
             if (employeeInfo.containsKey(empId)) {
                 employeeInfo.remove(empId);
+                
+                // Delete from MySQL
+                mysqlService.removeEmployee(empId);
+                mysqlService.removeAssignmentsForEmployee(empId);
+                
                 removed.add(empId);
                 System.out.println("    ✅ Removed employee: " + empId);
             } else {
@@ -4762,12 +4692,26 @@ public class ShiftApp {
                         .computeIfAbsent(shift, k -> new ArrayList<>())
                         .add(empId);
 
+                String startTime = null;
+                String endTime = null;
+                ShiftTime defaultShiftTime = SHIFT_TIMES.get(shift);
+                if (defaultShiftTime != null) {
+                    startTime = defaultShiftTime.getStartTime().toString();
+                    endTime = defaultShiftTime.getEndTime().toString();
+                    
+                    shiftTimesCache
+                            .computeIfAbsent(date, k -> new HashMap<>())
+                            .put(shift, new ShiftTimes(startTime, endTime));
+                }
+
                 // ============ SYNC TO MYSQL with all fields (including rating/category) ============
                 try {
                     mysqlService.syncManualAssignment(
                             date, shift, empId,
                             empName,
-                            gender
+                            gender,
+                            startTime,
+                            endTime
                     );
                     mysqlSyncCount++;
                     System.out.println("✅ Synced to MySQL with NULLs: " + empId);
@@ -5164,27 +5108,12 @@ public class ShiftApp {
                 }
             }
 
-            // ============ SORT EMPLOYEES BY PRIORITY ============
+            // ============ EMPLOYEES ============
             boolean prioritizePermanent = Boolean.TRUE.equals(input.get("prioritizePermanent"));
             List<EmployeeInfo> sortedEmployees = new ArrayList<>(allEmployees.values());
 
-            // Sort by: Permanent first, then higher rating, then lower wage (cost optimization)
-            sortedEmployees.sort((a, b) -> {
-                // First priority: Permanent employees
-                if (prioritizePermanent) {
-                    boolean aPerm = "Permanent".equalsIgnoreCase(a.getEmployeeType());
-                    boolean bPerm = "Permanent".equalsIgnoreCase(b.getEmployeeType());
-                    if (aPerm && !bPerm) return -1;
-                    if (!aPerm && bPerm) return 1;
-                }
-
-                // Second priority: Higher rating
-                int ratingCompare = Integer.compare(b.getPerformanceRating(), a.getPerformanceRating());
-                if (ratingCompare != 0) return ratingCompare;
-
-                // Third priority: Lower wage (cost optimization)
-                return Double.compare(a.getHourlyWage(), b.getHourlyWage());
-            });
+            // Manual sort by rating/wage removed. The Timefold AI solver 
+            // is now entirely responsible for selecting the optimal candidates.
 
             System.out.println("\n📊 Employee priority order (for cost optimization):");
             for (EmployeeInfo emp : sortedEmployees) {
@@ -5236,15 +5165,53 @@ public class ShiftApp {
                         continue;
                     }
 
+                    // Minimum Rest Period Check (11 hours)
+                    String yesterdayKey = empId + "-" + date.minusDays(1).toString();
+                    if (employeeExistingAssignments.containsKey(yesterdayKey)) {
+                        String yesterdayShiftName = employeeExistingAssignments.get(yesterdayKey);
+                        Map<String, ShiftTimes> yesterdayTimesMap = shiftTimesCache.get(date.minusDays(1).toString());
+                        if (yesterdayTimesMap != null && yesterdayTimesMap.containsKey(yesterdayShiftName)) {
+                            ShiftTimes yesterdayTimes = yesterdayTimesMap.get(yesterdayShiftName);
+                            if (yesterdayTimes.startTime() != null && yesterdayTimes.endTime() != null) {
+                                LocalTime yStart = LocalTime.parse(yesterdayTimes.startTime());
+                                LocalTime yEnd = LocalTime.parse(yesterdayTimes.endTime());
+
+                                LocalDateTime yesterdayEndDateTime = LocalDateTime.of(date.minusDays(1), yEnd);
+                                if (yEnd.equals(LocalTime.MIDNIGHT) || yEnd.isBefore(yStart)) {
+                                    yesterdayEndDateTime = yesterdayEndDateTime.plusDays(1);
+                                }
+
+                                LocalDateTime todayStartDateTime = LocalDateTime.of(date, startLocalTime);
+                                long gapHours = java.time.temporal.ChronoUnit.HOURS.between(yesterdayEndDateTime, todayStartDateTime);
+
+                                if (gapHours >= 0 && gapHours < systemConfig.getMinGapBetweenShiftsHours()) {
+                                    skippedOnThisDate.add(emp.getName() + " (" + empId + ") - Insufficient rest (Only " + gapHours + " hours since " + yesterdayShiftName + ")");
+                                    skippedCount++;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
+
                     // Check rating requirement for THIS DATE
                     String position = emp.getPosition();
+                    boolean roleRequested = false;
                     boolean ratingOk = false;
+                    
                     for (Scheduler.ShiftSchedule.RatingRequirement req : ratingRequirements) {
                         if (req.getRoleName().equals(position)) {
+                            roleRequested = true;
                             ratingOk = req.getAllowedRatings().contains(emp.getPerformanceRating());
                             break;
                         }
                     }
+                    
+                    if (!roleRequested) {
+                        skippedOnThisDate.add(emp.getName() + " (" + empId + ") - Role '" + position + "' is not requested for this shift");
+                        skippedCount++;
+                        continue;
+                    }
+
                     if (!ratingOk) {
                         skippedOnThisDate.add(emp.getName() + " (" + empId + ") - Rating " + emp.getPerformanceRating() +
                                 " doesn't meet requirement for " + position);
@@ -5354,7 +5321,7 @@ public class ShiftApp {
                     .withSolutionClass(Scheduler.ShiftSchedule.class)
                     .withEntityClasses(Scheduler.EmployeeAssignment.class)
                     .withConstraintProviderClass(Scheduler.ShiftConstraints.class)
-                    .withTerminationSpentLimit(Duration.ofSeconds(20));
+                    .withTerminationSpentLimit(Duration.ofSeconds(3));
 
             SolverFactory<Scheduler.ShiftSchedule> solverFactory = SolverFactory.create(solverConfig);
             Solver<Scheduler.ShiftSchedule> solver = solverFactory.buildSolver();
@@ -5398,21 +5365,19 @@ public class ShiftApp {
                 Map<String, Integer> dayRoleCounts = finalRoleCounts.computeIfAbsent(d, k -> new HashMap<>());
                 int currentDayCount = dayRoleCounts.getOrDefault(position, 0);
 
-                boolean withinLimit = true;
-                for (Scheduler.ShiftSchedule.RoleLimit limit : roleLimits) {
-                    if (limit.getRoleName().equals(position)) {
-                        withinLimit = currentDayCount < limit.getMaxWorkers();
-                        break;
-                    }
-                }
-
-                if (!withinLimit) continue;
+                // Manual hard limit extraction loop removed. 
+                // Timefold solver now guarantees we don't exceed max workers.
 
                 // Save to shiftAssignments (JSON)
                 shiftAssignments
                         .computeIfAbsent(d, k -> new HashMap<>())
                         .computeIfAbsent(s, k -> new ArrayList<>())
                         .add(eid);
+
+                // Save to shiftTimesCache
+                shiftTimesCache
+                        .computeIfAbsent(d, k -> new HashMap<>())
+                        .put(s, new ShiftTimes(startTime, endTime));
 
                 // Generate break schedule if enabled
                 String breakStart = null;
@@ -5449,22 +5414,16 @@ public class ShiftApp {
                     breakSlot = breakSchedule.getFormattedBreakSlot();
                 }
 
-                // ============ SYNC TO MYSQL with your exact parameter order ============
-                // This matches exactly: syncAssignment(d, s, eid, ea.getEmployeeName(), ea.getPosition())
+                // ============ SYNC TO MYSQL ============
                 mysqlService.syncAssignment(
                         d, s, eid,
                         ea.getEmployeeName(),
                         ea.getPosition(),
                         emp.getEmployeeType(),
                         emp.getGender(),
-                        emp.getPerformanceRating()
-                );
-                // If you have all details available, also call the full version
-                if (emp.getEmployeeType() != null) mysqlService.syncAssignment(
-                        d, s, eid,
-                        ea.getEmployeeName(), ea.getPosition(),
-                        emp.getEmployeeType(), emp.getGender(),
-                        emp.getPerformanceRating()
+                        emp.getPerformanceRating(),
+                        startTime,
+                        endTime
                 );
 
                 // Track assigned employees per date
@@ -6094,24 +6053,12 @@ public class ShiftApp {
             }
         }
 
-        // ============ SORT EMPLOYEES BY PRIORITY ============
+        // ============ PREPARE EMPLOYEES ============
         boolean prioritizePermanent = Boolean.TRUE.equals(workingInput.get("prioritizePermanent"));
         List<EmployeeInfo> sortedEmployees = new ArrayList<>(allEmployees.values());
-
-        // Sort by: Permanent first, then higher rating, then lower wage (cost optimization)
-        sortedEmployees.sort((a, b) -> {
-            if (prioritizePermanent) {
-                boolean aPerm = "Permanent".equalsIgnoreCase(a.getEmployeeType());
-                boolean bPerm = "Permanent".equalsIgnoreCase(b.getEmployeeType());
-                if (aPerm && !bPerm) return -1;
-                if (!aPerm && bPerm) return 1;
-            }
-
-            int ratingCompare = Integer.compare(b.getPerformanceRating(), a.getPerformanceRating());
-            if (ratingCompare != 0) return ratingCompare;
-
-            return Double.compare(a.getHourlyWage(), b.getHourlyWage());
-        });
+        
+        // Manual sort by rating/wage removed. The Timefold AI solver 
+        // is now entirely responsible for selecting the optimal candidates.
 
         // ============ BUILD PLANNING ENTITIES - CHECK PER DATE ============
         List<Scheduler.EmployeeAssignment> planningEntities = new ArrayList<>();
@@ -6235,7 +6182,7 @@ public class ShiftApp {
                 .withSolutionClass(Scheduler.ShiftSchedule.class)
                 .withEntityClasses(Scheduler.EmployeeAssignment.class)
                 .withConstraintProviderClass(Scheduler.ShiftConstraints.class)
-                .withTerminationSpentLimit(Duration.ofSeconds(20));
+                .withTerminationSpentLimit(Duration.ofSeconds(3));
 
         SolverFactory<Scheduler.ShiftSchedule> solverFactory = SolverFactory.create(solverConfig);
         Solver<Scheduler.ShiftSchedule> solver = solverFactory.buildSolver();
@@ -6266,28 +6213,21 @@ public class ShiftApp {
             EmployeeInfo emp = allEmployees.get(eid);
             if (emp == null) continue;
 
-            if ("Night".equals(s) && "Female".equalsIgnoreCase(emp.getGender())) {
-                continue;
-            }
-
             String position = emp.getPosition();
             Map<String, Integer> dayRoleCounts = finalRoleCounts.computeIfAbsent(d, k -> new HashMap<>());
             int currentDayCount = dayRoleCounts.getOrDefault(position, 0);
 
-            boolean withinLimit = true;
-            for (Scheduler.ShiftSchedule.RoleLimit limit : roleLimits) {
-                if (limit.getRoleName().equals(position)) {
-                    withinLimit = currentDayCount < limit.getMaxWorkers();
-                    break;
-                }
-            }
-
-            if (!withinLimit) continue;
+            // Manual hard limit extraction loop removed.
+            // Timefold solver now guarantees we don't exceed max workers.
 
             shiftAssignments
                     .computeIfAbsent(d, k -> new HashMap<>())
                     .computeIfAbsent(s, k -> new ArrayList<>())
                     .add(eid);
+
+            shiftTimesCache
+                    .computeIfAbsent(d, k -> new HashMap<>())
+                    .put(s, new ShiftTimes(startTime, endTime));
 
             String breakStart = null;
             String breakEnd = null;
@@ -6329,17 +6269,10 @@ public class ShiftApp {
                     ea.getPosition(),
                     emp.getEmployeeType(),
                     emp.getGender(),
-                    emp.getPerformanceRating()
+                    emp.getPerformanceRating(),
+                    startTime,
+                    endTime
             );
-
-            if (emp.getEmployeeType() != null) {
-                mysqlService.syncAssignment(
-                        d, s, eid,
-                        ea.getEmployeeName(), ea.getPosition(),
-                        emp.getEmployeeType(), emp.getGender(),
-                        emp.getPerformanceRating()
-                );
-            }
 
             assignedEmployeesPerDate.computeIfAbsent(d, k -> new HashSet<>()).add(eid);
 
@@ -8484,7 +8417,7 @@ public class ShiftApp {
             public void setRequestedShift(String requestedShift) {
                 this.requestedShift = requestedShift;
             }
-            @PlanningVariable(valueRangeProviderRefs = "shiftRange")
+            @PlanningVariable(valueRangeProviderRefs = "shiftRange", allowsUnassigned = true)
             private String shift;
 
             public EmployeeAssignment() {
@@ -8859,19 +8792,20 @@ public class ShiftApp {
                         factory.forEachUniquePair(Scheduler.EmployeeAssignment.class,
                                         Joiners.equal(Scheduler.EmployeeAssignment::getEmployeeId),
                                         Joiners.equal(Scheduler.EmployeeAssignment::getDate))
-                                .filter((a1, a2) -> !a1.getShift().equals(a2.getShift()))
+                                .filter((a1, a2) -> a1.getShift() != null && a2.getShift() != null && !a1.getShift().equals(a2.getShift()))
                                 .penalizeLong(HardSoftLongScore.ONE_HARD)
                                 .asConstraint("oneShiftPerEmployeePerDay"),
 
                         // 2. Female cannot work night shift
                         factory.forEach(Scheduler.EmployeeAssignment.class)
-                                .filter(assignment -> "Female".equalsIgnoreCase(assignment.getGender()) &&
+                                .filter(assignment -> assignment.getShift() != null && "Female".equalsIgnoreCase(assignment.getGender()) &&
                                         "Night".equals(assignment.getShift()))
                                 .penalizeLong(HardSoftLongScore.ONE_HARD)
                                 .asConstraint("femaleCannotWorkNightShift"),
 
                         // 3. Rating requirements
                         factory.forEach(Scheduler.EmployeeAssignment.class)
+                                .filter(a -> a.getShift() != null)
                                 .filter(a -> {
                                     List<Integer> allowed = requiredRatingsPerRole.getOrDefault(
                                             a.getPosition(), List.of(1,2,3,4,5));
@@ -8882,6 +8816,7 @@ public class ShiftApp {
 
                         // 4. Max workers per role per day
                         factory.forEach(EmployeeAssignment.class)
+                                .filter(a -> a.getShift() != null)
                                 .groupBy(
                                         EmployeeAssignment::getDate,
                                         EmployeeAssignment::getPosition,
@@ -8890,13 +8825,15 @@ public class ShiftApp {
                                         Joiners.equal((date, position, count) -> position,
                                                 ShiftSchedule.RoleLimit::getRoleName))
                                 .filter((date, position, count, roleLimit) -> count > roleLimit.getMaxWorkers())
-                                .penalizeLong(HardSoftLongScore.ONE_SOFT,
-                                        (date, position, count, roleLimit) -> {
-                                            int excess = count - roleLimit.getMaxWorkers();
-                                            // Progressive penalty: higher excess = exponentially higher penalty
-                                            return (long) (Math.pow(excess, 2) * 1000); // 1 extra = 1000, 2 extra = 4000, 3 extra = 9000
-                                        })
+                                .penalizeLong(HardSoftLongScore.ONE_HARD,
+                                        (date, position, count, roleLimit) -> (long) (count - roleLimit.getMaxWorkers()) * 10000L)
                                 .asConstraint("maxWorkersPerRolePerDay"),
+
+                        // 4b. Assign as many as possible
+                        factory.forEachIncludingNullVars(EmployeeAssignment.class)
+                                .filter(a -> a.getShift() == null)
+                                .penalizeLong(HardSoftLongScore.ONE_HARD, a -> 1L)
+                                .asConstraint("assignAsManyAsPossible"),
 
                         // ============ SOFT CONSTRAINTS ============
 
@@ -8936,6 +8873,7 @@ public class ShiftApp {
 
                         // 8. Prefer permanent employees
                         factory.forEach(Scheduler.EmployeeAssignment.class)
+                                .filter(a -> a.getShift() != null)
                                 .filter(assignment -> !assignment.isPermanentEmployee())
                                 .penalizeLong(HardSoftLongScore.ONE_SOFT,
                                         assignment -> assignment.isPrioritizePermanent() ? 50L : 0L)
@@ -8943,6 +8881,7 @@ public class ShiftApp {
 
                         // 9. Balanced shift distribution
                         factory.forEach(Scheduler.EmployeeAssignment.class)
+                                .filter(a -> a.getShift() != null)
                                 .groupBy(
                                         Scheduler.EmployeeAssignment::getDate,
                                         Scheduler.EmployeeAssignment::getShift,
@@ -8960,9 +8899,11 @@ public class ShiftApp {
 
                         // 10. Avoid overlapping breaks
                         factory.forEach(Scheduler.EmployeeAssignment.class)
+                                .filter(a -> a.getShift() != null)
                                 .join(Scheduler.EmployeeAssignment.class,
                                         Joiners.equal(Scheduler.EmployeeAssignment::getDate),
                                         Joiners.filtering((a1, a2) -> {
+                                            if (a2.getShift() == null) return false;
                                             if (a1.getEmployeeId().equals(a2.getEmployeeId())) {
                                                 return false;
                                             }
@@ -10463,10 +10404,7 @@ public class ShiftApp {
         }
     }
 
-
-
-
-
+    
 }
 
 

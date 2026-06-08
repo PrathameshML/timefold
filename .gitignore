@@ -1,11 +1,11 @@
-# target/
-# !.mvn/wrapper/maven-wrapper.jar
-# !**/src/main/**/target/
-# !**/src/test/**/target/
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
 
-target/*
-!target/quarkus-app/
-!target/quarkus-app/**
+# target/*
+# !target/quarkus-app/
+# !target/quarkus-app/**
 
 ### IntelliJ IDEA ###
 .idea/modules.xml
