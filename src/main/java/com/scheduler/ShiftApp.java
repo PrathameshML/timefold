@@ -5166,28 +5166,38 @@ public class ShiftApp {
                     }
 
                     // Minimum Rest Period Check (11 hours)
-                    String yesterdayKey = empId + "-" + date.minusDays(1).toString();
-                    if (employeeExistingAssignments.containsKey(yesterdayKey)) {
-                        String yesterdayShiftName = employeeExistingAssignments.get(yesterdayKey);
-                        Map<String, ShiftTimes> yesterdayTimesMap = shiftTimesCache.get(date.minusDays(1).toString());
-                        if (yesterdayTimesMap != null && yesterdayTimesMap.containsKey(yesterdayShiftName)) {
-                            ShiftTimes yesterdayTimes = yesterdayTimesMap.get(yesterdayShiftName);
-                            if (yesterdayTimes.startTime() != null && yesterdayTimes.endTime() != null) {
-                                LocalTime yStart = LocalTime.parse(yesterdayTimes.startTime());
-                                LocalTime yEnd = LocalTime.parse(yesterdayTimes.endTime());
+                    String yesterdayStr = date.minusDays(1).toString();
+                    Map<String, List<String>> yesterdayAssignments = shiftAssignments.get(yesterdayStr);
+                    if (yesterdayAssignments != null) {
+                        String assignedYesterdayShift = null;
+                        for (Map.Entry<String, List<String>> entry : yesterdayAssignments.entrySet()) {
+                            if (entry.getValue().contains(empId)) {
+                                assignedYesterdayShift = entry.getKey();
+                                break;
+                            }
+                        }
 
-                                LocalDateTime yesterdayEndDateTime = LocalDateTime.of(date.minusDays(1), yEnd);
-                                if (yEnd.equals(LocalTime.MIDNIGHT) || yEnd.isBefore(yStart)) {
-                                    yesterdayEndDateTime = yesterdayEndDateTime.plusDays(1);
-                                }
+                        if (assignedYesterdayShift != null) {
+                            Map<String, ShiftTimes> yesterdayTimesMap = shiftTimesCache.get(yesterdayStr);
+                            if (yesterdayTimesMap != null && yesterdayTimesMap.containsKey(assignedYesterdayShift)) {
+                                ShiftTimes yesterdayTimes = yesterdayTimesMap.get(assignedYesterdayShift);
+                                if (yesterdayTimes.startTime() != null && yesterdayTimes.endTime() != null) {
+                                    LocalTime yStart = LocalTime.parse(yesterdayTimes.startTime());
+                                    LocalTime yEnd = LocalTime.parse(yesterdayTimes.endTime());
 
-                                LocalDateTime todayStartDateTime = LocalDateTime.of(date, startLocalTime);
-                                long gapHours = java.time.temporal.ChronoUnit.HOURS.between(yesterdayEndDateTime, todayStartDateTime);
+                                    LocalDateTime yesterdayEndDateTime = LocalDateTime.of(date.minusDays(1), yEnd);
+                                    if (yEnd.equals(LocalTime.MIDNIGHT) || yEnd.isBefore(yStart)) {
+                                        yesterdayEndDateTime = yesterdayEndDateTime.plusDays(1);
+                                    }
 
-                                if (gapHours >= 0 && gapHours < systemConfig.getMinGapBetweenShiftsHours()) {
-                                    skippedOnThisDate.add(emp.getName() + " (" + empId + ") - Insufficient rest (Only " + gapHours + " hours since " + yesterdayShiftName + ")");
-                                    skippedCount++;
-                                    continue;
+                                    LocalDateTime todayStartDateTime = LocalDateTime.of(date, startLocalTime);
+                                    long gapHours = java.time.temporal.ChronoUnit.HOURS.between(yesterdayEndDateTime, todayStartDateTime);
+
+                                    if (gapHours >= 0 && gapHours < systemConfig.getMinGapBetweenShiftsHours()) {
+                                        skippedOnThisDate.add(emp.getName() + " (" + empId + ") - Insufficient rest (Only " + gapHours + " hours since " + assignedYesterdayShift + ")");
+                                        skippedCount++;
+                                        continue;
+                                    }
                                 }
                             }
                         }
