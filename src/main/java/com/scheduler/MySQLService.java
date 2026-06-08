@@ -493,9 +493,9 @@ public class MySQLService {
         return shiftAssignments;
     }
 
-    public Map<String, Map<String, ShiftApp.ShiftTimes>> loadAllShiftTimes() {
-        Map<String, Map<String, ShiftApp.ShiftTimes>> shiftTimesCache = new HashMap<>();
-        String sql = "SELECT assignment_date, shift_name, start_time, end_time FROM shift_assignments GROUP BY assignment_date, shift_name, start_time, end_time";
+    public Map<String, Map<String, ShiftApp.ShiftTimes>> loadAllEmployeeShiftTimes() {
+        Map<String, Map<String, ShiftApp.ShiftTimes>> cache = new HashMap<>();
+        String sql = "SELECT assignment_date, employee_id, start_time, end_time FROM shift_assignments";
 
         try (Connection conn = getConnection();
              Statement stmt = conn.createStatement();
@@ -503,19 +503,19 @@ public class MySQLService {
 
             while (rs.next()) {
                 String date = rs.getDate("assignment_date").toString();
-                String shift = rs.getString("shift_name");
+                String empId = rs.getString("employee_id");
                 String startTime = rs.getString("start_time");
                 String endTime = rs.getString("end_time");
 
                 if (startTime != null && endTime != null) {
-                    shiftTimesCache.computeIfAbsent(date, k -> new HashMap<>())
-                            .put(shift, new ShiftApp.ShiftTimes(startTime, endTime));
+                    cache.computeIfAbsent(date, k -> new HashMap<>())
+                            .put(empId, new ShiftApp.ShiftTimes(startTime, endTime));
                 }
             }
         } catch (SQLException e) {
-            System.err.println("❌ Failed to load shift times: " + e.getMessage());
+            System.err.println("❌ Failed to load employee shift times: " + e.getMessage());
         }
-        return shiftTimesCache;
+        return cache;
     }
 
     public int getTotalAssignments() {

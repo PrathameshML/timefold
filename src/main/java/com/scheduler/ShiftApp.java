@@ -30,6 +30,7 @@ import java.time.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import ai.timefold.solver.core.api.score.stream.ConstraintCollectors;
@@ -48,8 +49,8 @@ public class ShiftApp {
         shiftAssignments.clear();
         shiftAssignments.putAll(mysqlService.loadAllAssignments());
         
-        shiftTimesCache.clear();
-        shiftTimesCache.putAll(mysqlService.loadAllShiftTimes());
+        employeeShiftTimesCache.clear();
+        employeeShiftTimesCache.putAll(mysqlService.loadAllEmployeeShiftTimes());
         
         System.out.println("✅ Loaded " + shiftAssignments.size() + " days of assignments and " +
                 employeeInfo.size() + " employee records from MySQL");
@@ -563,7 +564,7 @@ public class ShiftApp {
     // Store employee shifts and leaves - make them static so they persist
 //    private static final Map<String, String> employeeShifts = new HashMap<>();
     private static final Map<String, Map<String, List<String>>> shiftAssignments = new HashMap<>();  // day -> shift -> list of employee IDs
-    private static final Map<String, Map<String, ShiftTimes>> shiftTimesCache = new HashMap<>(); // day -> shift -> times
+    private static Map<String, Map<String, ShiftTimes>> employeeShiftTimesCache = new ConcurrentHashMap<>();
     private static final Map<String, List<LeaveRecord>> employeeLeaves = new HashMap<>();
     private static final Map<String, EmployeeInfo> employeeInfo = new HashMap<>();
 
@@ -4699,9 +4700,9 @@ public class ShiftApp {
                     startTime = defaultShiftTime.getStartTime().toString();
                     endTime = defaultShiftTime.getEndTime().toString();
                     
-                    shiftTimesCache
-                            .computeIfAbsent(date, k -> new HashMap<>())
-                            .put(shift, new ShiftTimes(startTime, endTime));
+                    employeeShiftTimesCache
+                            .computeIfAbsent(date, k -> new ConcurrentHashMap<>())
+                            .put(empId, new ShiftTimes(startTime, endTime));
                 }
 
                 // ============ SYNC TO MYSQL with all fields (including rating/category) ============
@@ -5178,9 +5179,9 @@ public class ShiftApp {
                         }
 
                         if (assignedYesterdayShift != null) {
-                            Map<String, ShiftTimes> yesterdayTimesMap = shiftTimesCache.get(yesterdayStr);
-                            if (yesterdayTimesMap != null && yesterdayTimesMap.containsKey(assignedYesterdayShift)) {
-                                ShiftTimes yesterdayTimes = yesterdayTimesMap.get(assignedYesterdayShift);
+                            Map<String, ShiftTimes> yesterdayEmpTimesMap = employeeShiftTimesCache.get(yesterdayStr);
+                            if (yesterdayEmpTimesMap != null && yesterdayEmpTimesMap.containsKey(empId)) {
+                                ShiftTimes yesterdayTimes = yesterdayEmpTimesMap.get(empId);
                                 if (yesterdayTimes.startTime() != null && yesterdayTimes.endTime() != null) {
                                     LocalTime yStart = LocalTime.parse(yesterdayTimes.startTime());
                                     LocalTime yEnd = LocalTime.parse(yesterdayTimes.endTime());
@@ -5248,6 +5249,8 @@ public class ShiftApp {
                     entity.setShiftColor(emp.getShiftColor());
                     entity.setHourlyWage(emp.getHourlyWage());
                     entity.setPerformanceRating(emp.getPerformanceRating());
+                    entity.setShiftStartStr(startTime);
+                    entity.setShiftEndStr(endTime);
                     entity.setEmployeeType(emp.getEmployeeType());
                     entity.setPermanentEmployee("Permanent".equalsIgnoreCase(emp.getEmployeeType()));
                     entity.setRequestedShift(shiftName);
@@ -5385,9 +5388,9 @@ public class ShiftApp {
                         .add(eid);
 
                 // Save to shiftTimesCache
-                shiftTimesCache
-                        .computeIfAbsent(d, k -> new HashMap<>())
-                        .put(s, new ShiftTimes(startTime, endTime));
+                employeeShiftTimesCache
+                        .computeIfAbsent(d, k -> new ConcurrentHashMap<>())
+                        .put(eid, new ShiftTimes(startTime, endTime));
 
                 // Generate break schedule if enabled
                 String breakStart = null;
@@ -6235,9 +6238,9 @@ public class ShiftApp {
                     .computeIfAbsent(s, k -> new ArrayList<>())
                     .add(eid);
 
-            shiftTimesCache
-                    .computeIfAbsent(d, k -> new HashMap<>())
-                    .put(s, new ShiftTimes(startTime, endTime));
+            employeeShiftTimesCache
+                    .computeIfAbsent(d, k -> new ConcurrentHashMap<>())
+                    .put(eid, new ShiftTimes(startTime, endTime));
 
             String breakStart = null;
             String breakEnd = null;
@@ -8410,6 +8413,8 @@ public class ShiftApp {
             private String position;
             private String shiftColor;
             private String requestedShift;
+            private String shiftStartStr;
+            private String shiftEndStr;
             private double hourlyWage;
             private int performanceRating;
             private String employeeType;
@@ -8423,9 +8428,24 @@ public class ShiftApp {
                 return requestedShift;
             }
 
-
             public void setRequestedShift(String requestedShift) {
                 this.requestedShift = requestedShift;
+            }
+            
+            public String getShiftStartStr() {
+                return shiftStartStr;
+            }
+            
+            public void setShiftStartStr(String shiftStartStr) {
+                this.shiftStartStr = shiftStartStr;
+            }
+            
+            public String getShiftEndStr() {
+                return shiftEndStr;
+            }
+            
+            public void setShiftEndStr(String shiftEndStr) {
+                this.shiftEndStr = shiftEndStr;
             }
             @PlanningVariable(valueRangeProviderRefs = "shiftRange", allowsUnassigned = true)
             private String shift;
@@ -8917,62 +8937,113 @@ public class ShiftApp {
                                             if (a1.getEmployeeId().equals(a2.getEmployeeId())) {
                                                 return false;
                                             }
-                                            ShiftApp.ShiftTime shiftTime1 = SHIFT_TIMES.get(a1.getShift());
-                                            ShiftApp.ShiftTime shiftTime2 = SHIFT_TIMES.get(a2.getShift());
-                                            if (shiftTime1 == null || shiftTime2 == null) return false;
+                                            if (a1.getShiftStartStr() == null || a2.getShiftStartStr() == null) return false;
 
-                                            LocalTime breakStart1 = shiftTime1.getStartTime().plusHours(4);
-                                            LocalTime breakEnd1 = breakStart1.plusMinutes(30);
-                                            LocalTime breakStart2 = shiftTime2.getStartTime().plusHours(4);
-                                            LocalTime breakEnd2 = breakStart2.plusMinutes(30);
+                                            try {
+                                                LocalTime shiftStart1 = LocalTime.parse(a1.getShiftStartStr());
+                                                LocalTime shiftStart2 = LocalTime.parse(a2.getShiftStartStr());
 
-                                            return !(breakEnd1.isBefore(breakStart2) || breakEnd2.isBefore(breakStart1));
+                                                LocalTime breakStart1 = shiftStart1.plusHours(4);
+                                                LocalTime breakEnd1 = breakStart1.plusMinutes(30);
+                                                LocalTime breakStart2 = shiftStart2.plusHours(4);
+                                                LocalTime breakEnd2 = breakStart2.plusMinutes(30);
+
+                                                return !(breakEnd1.isBefore(breakStart2) || breakEnd2.isBefore(breakStart1));
+                                            } catch (Exception e) {
+                                                return false;
+                                            }
                                         }))
                                 .penalizeLong(HardSoftLongScore.ONE_SOFT)
                                 .asConstraint("avoidOverlappingBreaks"),
 
                         // 11. Break scheduling constraint
                         factory.forEach(Scheduler.EmployeeAssignment.class)
-                                .filter(assignment -> assignment.getShift() != null &&
-                                        SHIFT_TIMES.containsKey(assignment.getShift()))
+                                .filter(assignment -> assignment.getShift() != null && assignment.getShiftStartStr() != null)
                                 .penalizeLong(HardSoftLongScore.ONE_SOFT, assignment -> {
-                                    ShiftApp.ShiftTime shiftTime = SHIFT_TIMES.get(assignment.getShift());
-                                    if (shiftTime == null) return 0L;
+                                    try {
+                                        LocalTime shiftStart = LocalTime.parse(assignment.getShiftStartStr());
 
-                                    if (!assignment.isHasScheduledBreak() || assignment.getBreakStartTime() == null) {
-                                        return 100L;
+                                        if (!assignment.isHasScheduledBreak() || assignment.getBreakStartTime() == null) {
+                                            return 100L;
+                                        }
+
+                                        LocalTime actualBreakStart = assignment.getBreakStartTime();
+                                        LocalTime actualBreakEnd = assignment.getBreakEndTime();
+
+                                        long penalty = 0L;
+                                        long breakDuration = Duration.between(actualBreakStart, actualBreakEnd).toMinutes();
+                                        if (breakDuration != 30) {
+                                            penalty += Math.abs(breakDuration - 30) * 5;
+                                        }
+
+                                        long hoursFromStart = Duration.between(shiftStart, actualBreakStart).toHours();
+                                        if (hoursFromStart < 4) {
+                                            penalty += (4 - hoursFromStart) * 50;
+                                        } else if (hoursFromStart > 4) {
+                                            penalty += (hoursFromStart - 4) * 30;
+                                        }
+
+                                        return penalty;
+                                    } catch (Exception e) {
+                                        return 0L;
                                     }
-
-                                    LocalTime actualBreakStart = assignment.getBreakStartTime();
-                                    LocalTime actualBreakEnd = assignment.getBreakEndTime();
-                                    LocalTime expectedBreakStart = shiftTime.getStartTime().plusHours(4);
-
-                                    long penalty = 0L;
-                                    long breakDuration = Duration.between(actualBreakStart, actualBreakEnd).toMinutes();
-                                    if (breakDuration != 30) {
-                                        penalty += Math.abs(breakDuration - 30) * 5;
-                                    }
-
-                                    long hoursFromStart = Duration.between(shiftTime.getStartTime(), actualBreakStart).toHours();
-                                    if (hoursFromStart < 4) {
-                                        penalty += (4 - hoursFromStart) * 50;
-                                    } else if (hoursFromStart > 4) {
-                                        penalty += (hoursFromStart - 4) * 30;
-                                    }
-
-                                    return penalty;
                                 })
                                 .asConstraint("breakSchedulingConstraint"),
 
                         // 12. Max 8 hours per day (including OT)
                         factory.forEach(Scheduler.EmployeeAssignment.class)
                                 .filter(assignment -> {
-                                    double shiftHours = getShiftDuration(assignment.getShift());
+                                    if (assignment.getShift() == null || assignment.getShiftStartStr() == null || assignment.getShiftEndStr() == null) return false;
+                                    double shiftHours = calculateDurationHours(assignment.getShiftStartStr(), assignment.getShiftEndStr());
                                     return shiftHours > 8;
                                 })
                                 .penalizeLong(HardSoftLongScore.ONE_HARD,
-                                        assignment -> (long)((getShiftDuration(assignment.getShift()) - 8) * 60))
+                                        assignment -> (long)((calculateDurationHours(assignment.getShiftStartStr(), assignment.getShiftEndStr()) - 8) * 60))
                                 .asConstraint("maxEightHoursPerDay"),
+
+                        // 13. 11-Hour Minimum Rest Period between consecutive days
+                        factory.forEachUniquePair(EmployeeAssignment.class,
+                                Joiners.equal(EmployeeAssignment::getEmployeeId))
+                                .filter((a1, a2) -> {
+                                    if (a1.getShift() == null || a2.getShift() == null) return false;
+                                    
+                                    try {
+                                        LocalDate d1 = LocalDate.parse(a1.getDate());
+                                        LocalDate d2 = LocalDate.parse(a2.getDate());
+                                        
+                                        // Only care if they are consecutive days
+                                        if (!d1.plusDays(1).equals(d2) && !d2.plusDays(1).equals(d1)) {
+                                             return false;
+                                        }
+                                        
+                                        EmployeeAssignment earlier = d1.isBefore(d2) ? a1 : a2;
+                                        EmployeeAssignment later = d1.isBefore(d2) ? a2 : a1;
+                                        
+                                        if (a1.getShiftStartStr() == null || a1.getShiftEndStr() == null ||
+                                            a2.getShiftStartStr() == null || a2.getShiftEndStr() == null) {
+                                            return false;
+                                        }
+                                        
+                                        LocalTime yEnd = LocalTime.parse(earlier.getShiftEndStr());
+                                        LocalTime yStart = LocalTime.parse(earlier.getShiftStartStr());
+                                        
+                                        LocalDateTime yesterdayEndDateTime = LocalDateTime.of(LocalDate.parse(earlier.getDate()), yEnd);
+                                        if (yEnd.equals(LocalTime.MIDNIGHT) || yEnd.isBefore(yStart)) {
+                                            yesterdayEndDateTime = yesterdayEndDateTime.plusDays(1);
+                                        }
+
+                                        LocalTime todayStart = LocalTime.parse(later.getShiftStartStr());
+                                        LocalDateTime todayStartDateTime = LocalDateTime.of(LocalDate.parse(later.getDate()), todayStart);
+                                        long gapHours = java.time.temporal.ChronoUnit.HOURS.between(yesterdayEndDateTime, todayStartDateTime);
+                                        
+                                        return gapHours < 11;
+                                    } catch (Exception e) {
+                                        return false;
+                                    }
+                                })
+                                .penalizeLong(HardSoftLongScore.ONE_HARD, (a1, a2) -> 1000L)
+                                .asConstraint("minimum11HourRestBetweenShifts"),
+
                         // Add to your ShiftConstraints class - HARD constraint
                         factory.forEach(EmployeeAssignment.class)
                                 .groupBy(EmployeeAssignment::getEmployeeId,
@@ -9007,22 +9078,23 @@ public class ShiftApp {
                 };
             }
 
-            // Helper method to get shift duration
-            private static double getShiftDuration(String shiftName) {
-                ShiftApp.ShiftTime shiftTime = SHIFT_TIMES.get(shiftName);
-                if (shiftTime == null) return 8.0; // Default
+            // Helper method to calculate duration
+            private static double calculateDurationHours(String startStr, String endStr) {
+                try {
+                    LocalTime start = LocalTime.parse(startStr);
+                    LocalTime end = LocalTime.parse(endStr);
 
-                LocalTime start = shiftTime.getStartTime();
-                LocalTime end = shiftTime.getEndTime();
-
-                if (end.isBefore(start)) {
-                    // Night shift crossing midnight
-                    long minutesToMidnight = Duration.between(start, LocalTime.MAX).toMinutes() + 1;
-                    long minutesFromMidnight = Duration.between(LocalTime.MIN, end).toMinutes();
-                    return (minutesToMidnight + minutesFromMidnight) / 60.0;
-                } else {
-                    // Regular shift
-                    return Duration.between(start, end).toMinutes() / 60.0;
+                    if (end.isBefore(start)) {
+                        // Night shift crossing midnight
+                        long minutesToMidnight = Duration.between(start, LocalTime.MAX).toMinutes() + 1;
+                        long minutesFromMidnight = Duration.between(LocalTime.MIN, end).toMinutes();
+                        return (minutesToMidnight + minutesFromMidnight) / 60.0;
+                    } else {
+                        // Regular shift
+                        return Duration.between(start, end).toMinutes() / 60.0;
+                    }
+                } catch (Exception e) {
+                    return 8.0;
                 }
             }
         }
