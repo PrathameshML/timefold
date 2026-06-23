@@ -4,7 +4,9 @@ import ai.timefold.solver.core.api.domain.entity.PlanningEntity;
 import ai.timefold.solver.core.api.domain.lookup.PlanningId;
 import ai.timefold.solver.core.api.domain.solution.ProblemFactCollectionProperty;
 import ai.timefold.solver.core.api.domain.variable.PlanningVariable;
+import ai.timefold.solver.core.api.domain.entity.PlanningPin;
 import ai.timefold.solver.core.api.score.buildin.hardsoftlong.HardSoftLongScore;
+import ai.timefold.solver.core.api.score.buildin.hardmediumsoftlong.HardMediumSoftLongScore;
 import ai.timefold.solver.core.api.solver.Solver;
 import ai.timefold.solver.core.api.solver.SolverFactory;
 import ai.timefold.solver.core.config.solver.SolverConfig;
@@ -13,6 +15,11 @@ import ai.timefold.solver.core.api.domain.solution.PlanningSolution;
 import ai.timefold.solver.core.api.domain.solution.PlanningEntityCollectionProperty;
 import ai.timefold.solver.core.api.domain.solution.PlanningScore;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeProvider;
+import ai.timefold.solver.core.api.score.ScoreManager;
+import ai.timefold.solver.core.api.score.analysis.ScoreAnalysis;
+import ai.timefold.solver.core.api.score.analysis.ConstraintAnalysis;
+import ai.timefold.solver.core.api.score.analysis.MatchAnalysis;
+import ai.timefold.solver.core.api.solver.SolutionManager;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -51,6 +58,35 @@ public class ShiftApp {
         
         employeeShiftTimesCache.clear();
         employeeShiftTimesCache.putAll(mysqlService.loadAllEmployeeShiftTimes());
+        
+        employeeLeaves.clear();
+        employeeLeaves.putAll(mysqlService.loadAllLeaveRequests());
+        
+        overtimeRecords.clear();
+        overtimeRecords.putAll(mysqlService.loadAllOvertimeRecords());
+        
+        leaveCoverageRequests.clear();
+        leaveCoverageRequests.putAll(mysqlService.loadAllCoverageRequests());
+        
+        otCoverageAssignments.clear();
+        for (LeaveCoverageRequest req : leaveCoverageRequests.values()) {
+            if (req.getAssignments() != null) {
+                for (OTCoverageAssignment assignment : req.getAssignments()) {
+                    otCoverageAssignments.put(assignment.getId(), assignment);
+                }
+            }
+        }
+        
+        notifications.clear();
+        notifications.putAll(mysqlService.loadAllNotifications());
+        
+        SystemConfig dbConfig = mysqlService.loadSystemConfig();
+        if (dbConfig != null) {
+            systemConfig = dbConfig;
+            System.out.println("⚙️ Loaded SystemConfig from MySQL");
+        } else {
+            System.out.println("⚙️ Using default SystemConfig (none in MySQL)");
+        }
         
         System.out.println("✅ Loaded " + shiftAssignments.size() + " days of assignments and " +
                 employeeInfo.size() + " employee records from MySQL");
@@ -91,7 +127,7 @@ public class ShiftApp {
         System.out.println("✅ Created " + created + " new employees, total: " + employeeInfo.size());
     }
 
-    private static void saveAssignments() {
+    private static void syncAllEmployeesToDatabase() {
         // We now persist entirely to MySQL instead of JSON.
         // Sync any new or updated employees to the DB.
         for (EmployeeInfo emp : employeeInfo.values()) {
@@ -117,6 +153,16 @@ public class ShiftApp {
         displayLoadedAssignments();
 
         System.out.println("✅ System ready. Use GET /shifts to view assignments.");
+
+        // Load constraint configs from MySQL
+        constraintConfigs = mysqlService.loadAllConstraintConfigs();
+        if (constraintConfigs.isEmpty()) {
+            constraintConfigs = getDefaultConstraintConfigs();
+            mysqlService.insertDefaultConstraints(constraintConfigs);
+            System.out.println("📋 Inserted 11 default constraint configs");
+        } else {
+            System.out.println("📋 Loaded " + constraintConfigs.size() + " constraint configs from DB");
+        }
     }
 
 
@@ -508,6 +554,74 @@ public class ShiftApp {
         }
     }
 
+    // ============ CONSTRAINT CONFIG MODEL ============
+    public static class ConstraintConfig {
+        private int constraintId;
+        private String constraintName;
+        private String description;
+        private boolean enabled = true;
+        private String severity = "HARD";
+        private Double parameterValue;
+        private String parameterName;
+        private Double parameterValue2;
+        private String parameterName2;
+
+        public ConstraintConfig() {}
+
+        public ConstraintConfig(int id, String name, String desc, String severity, Double value, String paramName) {
+            this(id, name, desc, severity, value, paramName, null, null);
+        }
+
+        public ConstraintConfig(int id, String name, String desc, String severity, Double value, String paramName, Double value2, String paramName2) {
+            this.constraintId = id;
+            this.constraintName = name;
+            this.description = desc;
+            this.severity = severity;
+            this.parameterValue = value;
+            this.parameterName = paramName;
+            this.parameterValue2 = value2;
+            this.parameterName2 = paramName2;
+        }
+
+        public int getConstraintId() { return constraintId; }
+        public void setConstraintId(int constraintId) { this.constraintId = constraintId; }
+        public String getConstraintName() { return constraintName; }
+        public void setConstraintName(String constraintName) { this.constraintName = constraintName; }
+        public String getDescription() { return description; }
+        public void setDescription(String description) { this.description = description; }
+        public boolean isEnabled() { return enabled; }
+        public void setEnabled(boolean enabled) { this.enabled = enabled; }
+        public String getSeverity() { return severity; }
+        public void setSeverity(String severity) { this.severity = severity; }
+        public Double getParameterValue() { return parameterValue; }
+        public void setParameterValue(Double parameterValue) { this.parameterValue = parameterValue; }
+        public String getParameterName() { return parameterName; }
+        public void setParameterName(String parameterName) { this.parameterName = parameterName; }
+        public Double getParameterValue2() { return parameterValue2; }
+        public void setParameterValue2(Double parameterValue2) { this.parameterValue2 = parameterValue2; }
+        public String getParameterName2() { return parameterName2; }
+        public void setParameterName2(String parameterName2) { this.parameterName2 = parameterName2; }
+    }
+
+    // Static constraint config list — loaded from MySQL on startup
+    private static List<ConstraintConfig> constraintConfigs = new ArrayList<>();
+
+    private static List<ConstraintConfig> getDefaultConstraintConfigs() {
+        List<ConstraintConfig> defaults = new ArrayList<>();
+        defaults.add(new ConstraintConfig(1, "skillMatch", "Employee skills should match with shift required skills", "HARD", 100.0, "skillMatchPercentage"));
+        defaults.add(new ConstraintConfig(2, "noOverlappingShifts", "No overlapping/concurrent shifts per employee", "HARD", null, null));
+        defaults.add(new ConstraintConfig(3, "unavailableTimeslot", "Shift not planned on unavailable timeslot (e.g. female night shift)", "HARD", null, null));
+        defaults.add(new ConstraintConfig(4, "everyShiftPlanned", "Every shift should be planned/assigned", "MEDIUM", null, null));
+        defaults.add(new ConstraintConfig(5, "wageOptimization", "Assign employees preferring lower wages", "SOFT", null, null));
+        defaults.add(new ConstraintConfig(6, "maxDailyHours", "Maximum working hours per day", "MEDIUM", 8.0, "maxHoursPerDay"));
+        defaults.add(new ConstraintConfig(7, "maxWeeklyHours", "Maximum working hours per week", "MEDIUM", 40.0, "maxHoursPerWeek"));
+        defaults.add(new ConstraintConfig(8, "overtimeThreshold", "Hours beyond threshold counted as overtime", "SOFT", 8.0, "otThresholdHours"));
+        defaults.add(new ConstraintConfig(9, "breakAfterHours", "Mandatory break after specified hours", "HARD", 4.0, "breakAfterHours", 30.0, "breakDurationMinutes"));
+        defaults.add(new ConstraintConfig(10, "consecutiveShifts", "Minimize gaps in schedule (prefer consecutive working days)", "HARD", null, null));
+        defaults.add(new ConstraintConfig(11, "permanentPriority", "Priority to permanent employees over contract", "SOFT", null, null));
+        return defaults;
+    }
+
     public static class ShiftType {
         private String name;
         private String hours;
@@ -529,17 +643,23 @@ public class ShiftApp {
         public String getHours() { return hours; }
         public void setHours(String hours) { this.hours = hours; }
 
+        public int getDurationHours() { return durationHours; }
+        public void setDurationHours(int durationHours) { this.durationHours = durationHours; }
+
+        public boolean isNightShift() { return nightShift; }
+        public void setNightShift(boolean nightShift) { this.nightShift = nightShift; }
+
     }
 
     public static class EmployeeCategory {
         private String name;
         private int weeklyHoursLimit;
-        private final int maxShiftLengthHours;
-        private final boolean paidBreaks;
-        private final int breakDurationMinutes;
-        private final int mandatoryRestHours;
+        private int maxShiftLengthHours;
+        private boolean paidBreaks;
+        private int breakDurationMinutes;
+        private int mandatoryRestHours;
 
-
+        public EmployeeCategory() {}
 
         public EmployeeCategory(String name, int weeklyHoursLimit, int maxShiftLengthHours,
                                 boolean paidBreaks, int breakDurationMinutes, int mandatoryRestHours) {
@@ -557,6 +677,18 @@ public class ShiftApp {
         public int getWeeklyHoursLimit() { return weeklyHoursLimit; }
         public void setWeeklyHoursLimit(int weeklyHoursLimit) { this.weeklyHoursLimit = weeklyHoursLimit; }
 
+        public int getMaxShiftLengthHours() { return maxShiftLengthHours; }
+        public void setMaxShiftLengthHours(int maxShiftLengthHours) { this.maxShiftLengthHours = maxShiftLengthHours; }
+
+        public boolean isPaidBreaks() { return paidBreaks; }
+        public void setPaidBreaks(boolean paidBreaks) { this.paidBreaks = paidBreaks; }
+
+        public int getBreakDurationMinutes() { return breakDurationMinutes; }
+        public void setBreakDurationMinutes(int breakDurationMinutes) { this.breakDurationMinutes = breakDurationMinutes; }
+
+        public int getMandatoryRestHours() { return mandatoryRestHours; }
+        public void setMandatoryRestHours(int mandatoryRestHours) { this.mandatoryRestHours = mandatoryRestHours; }
+
     }
 
     public record ShiftTimes(String startTime, String endTime) {}
@@ -564,6 +696,7 @@ public class ShiftApp {
     // Store employee shifts and leaves - make them static so they persist
 //    private static final Map<String, String> employeeShifts = new HashMap<>();
     private static final Map<String, Map<String, List<String>>> shiftAssignments = new HashMap<>();  // day -> shift -> list of employee IDs
+    private static final Map<String, Map<String, List<String>>> manualAssignments = new HashMap<>(); // NEW: tracks ONLY manual assignments
     private static Map<String, Map<String, ShiftTimes>> employeeShiftTimesCache = new ConcurrentHashMap<>();
     private static final Map<String, List<LeaveRecord>> employeeLeaves = new HashMap<>();
     private static final Map<String, EmployeeInfo> employeeInfo = new HashMap<>();
@@ -919,8 +1052,10 @@ public class ShiftApp {
             }
 
             // Check same department (prefer same department for coverage)
-            if (!this.department.equals(absentEmployee.getDepartment())) {
-                return false;
+            if (this.department != null && absentEmployee.getDepartment() != null) {
+                if (!this.department.equals(absentEmployee.getDepartment())) {
+                    return false;
+                }
             }
 
             // Check skill similarity
@@ -1132,6 +1267,7 @@ public class ShiftApp {
                 this.approved = true;
                 this.approvalTime = LocalDateTime.now();
                 this.approvedBy = approverId;
+                if (mysqlService != null) mysqlService.saveOvertimeRecord(this);
                 return true;
             }
             return false;
@@ -1140,6 +1276,7 @@ public class ShiftApp {
         public boolean markAsPaid() {
             if (approved && !paid) {
                 this.paid = true;
+                if (mysqlService != null) mysqlService.saveOvertimeRecord(this);
                 return true;
             }
             return false;
@@ -1327,6 +1464,7 @@ public class ShiftApp {
             assignments.add(assignment);
             otCoverageAssignments.put(assignment.getId(), assignment);
             this.status = "ASSIGNED";
+            if (mysqlService != null) mysqlService.saveCoverageRequest(this);
 
             // Create overtime record for coverage
             OvertimeRecord otRecord = new OvertimeRecord(
@@ -1339,6 +1477,7 @@ public class ShiftApp {
             otRecord.setApprovalTime(LocalDateTime.now());
 
             overtimeRecords.put(otRecord.getId(), otRecord);
+            if (mysqlService != null) mysqlService.saveOvertimeRecord(otRecord);
 
             return true;
         }
@@ -1375,6 +1514,7 @@ public class ShiftApp {
             assignments.add(assignment);
             otCoverageAssignments.put(assignment.getId(), assignment);
             this.status = "ASSIGNED";
+            if (mysqlService != null) mysqlService.saveCoverageRequest(this);
 
             // Calculate OT wage for coverage
             double otWage = assignedEmp.calculateCoverageWage(hours, coverageType);
@@ -1396,6 +1536,7 @@ public class ShiftApp {
             otRecord.setCoverageRequestId(this.id);
 
             overtimeRecords.put(otRecord.getId(), otRecord);
+            if (mysqlService != null) mysqlService.saveOvertimeRecord(otRecord);
 
             // Send notification to assigned employee
             if (systemConfig.isNotifyOTApproval()) {
@@ -1414,6 +1555,7 @@ public class ShiftApp {
         public boolean completeCoverage() {
             if ("ASSIGNED".equals(status)) {
                 this.status = "COMPLETED";
+                if (mysqlService != null) mysqlService.saveCoverageRequest(this);
                 return true;
             }
             return false;
@@ -1425,15 +1567,19 @@ public class ShiftApp {
                 this.status = "CANCELLED";
 
                 // Remove any OT records created for this coverage
-                overtimeRecords.values().removeIf(ot ->
-                        this.id.equals(ot.getCoverageRequestId())
-                );
+                overtimeRecords.values().removeIf(ot -> {
+                    boolean match = this.id.equals(ot.getCoverageRequestId());
+                    if (match && mysqlService != null) mysqlService.deleteOvertimeRecord(ot.getId());
+                    return match;
+                });
 
                 // Remove assignments
                 assignments.forEach(assignment ->
                         otCoverageAssignments.remove(assignment.getId())
                 );
                 assignments.clear();
+                
+                if (mysqlService != null) mysqlService.saveCoverageRequest(this);
 
                 return true;
             }
@@ -1563,7 +1709,11 @@ public class ShiftApp {
                 System.out.println("   Checking " + emp.getName() + " (" + emp.getDepartment() + "):");
                 System.out.println("     - Skills: " + emp.getSkills());
                 System.out.println("     - Skill similarity: " + String.format("%.1f%%", skillScore));
-                System.out.println("     - Same department: " + emp.getDepartment().equals(absentEmp.getDepartment()));
+                
+                boolean sameDepartment = emp.getDepartment() != null && absentEmp.getDepartment() != null && 
+                                         emp.getDepartment().equals(absentEmp.getDepartment());
+
+                System.out.println("     - Same department: " + sameDepartment);
                 System.out.println("     - Can work shift: " + emp.canWorkShift(shiftName));
 
                 // Check if can cover with the threshold
@@ -1573,7 +1723,7 @@ public class ShiftApp {
                     EmployeeCoverageMatch match = new EmployeeCoverageMatch(
                             emp,
                             skillScore,
-                            emp.getDepartment().equals(absentEmp.getDepartment()),
+                            sameDepartment,
                             emp.hasSkill("NightShiftCertified") && "Night".equals(shiftName),
                             emp.getHourlyWage(),
                             emp.getWeeklyOTHours()
@@ -2340,6 +2490,7 @@ public class ShiftApp {
                             record.getClockInTime().toLocalDate(), otHours, otType);
 
                     overtimeRecords.put(otRecord.getId(), otRecord);
+                    if (mysqlService != null) mysqlService.saveOvertimeRecord(otRecord);
 
                     record.setOvertimeHours(otHours);
                     record.setOvertimeRate(otRecord.getRate());
@@ -2729,6 +2880,7 @@ public class ShiftApp {
                         LocalDateTime.now()
                 );
                 notifications.put(notification.getId(), notification);
+                if (mysqlService != null) mysqlService.saveNotification(notification);
             }
         }
     }
@@ -2965,6 +3117,10 @@ public class ShiftApp {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getSystemConfig() {
         try {
+            SystemConfig dbConfig = mysqlService.loadSystemConfig();
+            if (dbConfig != null) {
+                systemConfig = dbConfig;
+            }
             return Response.ok(systemConfig).build();
         } catch (Exception e) {
             e.printStackTrace();
@@ -2980,9 +3136,44 @@ public class ShiftApp {
     @Produces(MediaType.APPLICATION_JSON)
     public Response updateSystemConfig(SystemConfig newConfig) {
         try {
+            // Intelligent Merge: Prevent partial JSON payloads from overwriting nested configurations with 0
+            if (systemConfig != null) {
+                for (Map.Entry<String, EmployeeCategory> entry : newConfig.getCategories().entrySet()) {
+                    EmployeeCategory existing = systemConfig.getCategories().get(entry.getKey());
+                    if (existing != null) {
+                        EmployeeCategory incoming = entry.getValue();
+                        if (incoming.getMaxShiftLengthHours() == 0) incoming.setMaxShiftLengthHours(existing.getMaxShiftLengthHours());
+                        if (incoming.getBreakDurationMinutes() == 0) incoming.setBreakDurationMinutes(existing.getBreakDurationMinutes());
+                        if (incoming.getMandatoryRestHours() == 0) incoming.setMandatoryRestHours(existing.getMandatoryRestHours());
+                        if (incoming.getWeeklyHoursLimit() == 0) incoming.setWeeklyHoursLimit(existing.getWeeklyHoursLimit());
+                    }
+                }
+                
+                // Merge ShiftType hidden fields
+                for (Map.Entry<String, ShiftType> entry : newConfig.getShiftTypes().entrySet()) {
+                    ShiftType existing = systemConfig.getShiftTypes().get(entry.getKey());
+                    if (existing != null) {
+                        ShiftType incoming = entry.getValue();
+                        if (incoming.getDurationHours() == 0) incoming.setDurationHours(existing.getDurationHours());
+                        // NightShift is boolean, fallback to existing or guess based on name
+                        if ("Night".equals(incoming.getName())) {
+                            incoming.setNightShift(true);
+                        } else if (!incoming.isNightShift()) {
+                            incoming.setNightShift(existing.isNightShift());
+                        }
+                    }
+                }
+            }
+
             systemConfig = newConfig;
-            System.out.println("✅ System configuration updated");
-            return Response.ok(Map.of("status", "success", "message", "Configuration updated")).build();
+            
+            // Phase 2: Persist to MySQL
+            if (mysqlService != null) {
+                mysqlService.saveSystemConfig(systemConfig);
+            }
+            
+            System.out.println("✅ System configuration updated and saved to DB");
+            return Response.ok(systemConfig).build();
         } catch (Exception e) {
             e.printStackTrace();
             return Response.status(Response.Status.BAD_REQUEST)
@@ -3000,7 +3191,7 @@ public class ShiftApp {
             employeeInfo.put(employee.getId(), employee);
             
             // Sync the new employee to MySQL
-            saveAssignments();
+            syncAllEmployeesToDatabase();
             
             System.out.println("✅ Added employee and synced to DB: " + employee.getName());
             return Response.ok(Map.of("status", "success", "employee", employee)).build();
@@ -3250,7 +3441,7 @@ public class ShiftApp {
                         .computeIfAbsent(scheduledShift, k -> new ArrayList<>())
                         .add(employeeId);
 
-                saveAssignments();
+                syncAllEmployeesToDatabase();
                 System.out.println("⚠️ No shift found, assigned default: " + scheduledShift);
             }
 
@@ -3555,7 +3746,7 @@ public class ShiftApp {
     }
 
     @GET
-    @Path("/overtime/{employeeId}")
+    @Path("/shifts/overtime/{employeeId}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getEmployeeOvertime(@PathParam("employeeId") String employeeId) {
         try {
@@ -3587,7 +3778,7 @@ public class ShiftApp {
     }
 
     @POST
-    @Path("/overtime/{otId}/approve")
+    @Path("/shifts/overtime/{otId}/approve")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response approveOvertime(@PathParam("otId") String otId, Map<String, Object> input) {
@@ -3952,7 +4143,6 @@ public class ShiftApp {
     @DELETE
     @Path("/shifts/clear-all")
     @Produces(MediaType.APPLICATION_JSON)
-
     public Response clearAllAssignments() {
         try {
             int daysCleared = shiftAssignments.size();
@@ -3969,17 +4159,14 @@ public class ShiftApp {
             shiftAssignments.clear();
 
             // Clear MySQL
-            mysqlService.clearAllAssignments();
-
-            // Save empty state to JSON file
-            saveAssignments();
+            mysqlService.clearAllDatabase();
 
             System.out.println("🗑️ Cleared all " + daysCleared + " days of assignments (" +
-                    totalAssignments + " total assignments) from JSON and MySQL");
+                    totalAssignments + " total assignments) from Memory and MySQL");
 
             return Response.ok(Map.of(
                     "status", "success",
-                    "message", "Cleared all assignments from JSON and MySQL",
+                    "message", "Cleared all assignments from Memory and MySQL",
                     "days_cleared", daysCleared,
                     "assignments_cleared", totalAssignments,
                     "mysql_cleared", true
@@ -4268,7 +4455,7 @@ public class ShiftApp {
             }
 
             // Save changes to file
-            saveAssignments();
+            syncAllEmployeesToDatabase();
 
             // ============ BUILD RESPONSE ============
             Map<String, Object> response = new HashMap<>();
@@ -4321,7 +4508,7 @@ public class ShiftApp {
             mysqlService.clearAllEmployees();
             mysqlService.clearAllAssignments();
             
-            saveAssignments(); // Save to persist the empty state (now optional)
+            syncAllEmployeesToDatabase(); // Save to persist the empty state (now optional)
 
             System.out.println("🗑️ Cleared ALL employee records (" + removedCount + " employees)");
 
@@ -4342,7 +4529,7 @@ public class ShiftApp {
             mysqlService.clearAllEmployees();
             mysqlService.clearAllAssignments();
             
-            saveAssignments();
+            syncAllEmployeesToDatabase();
 
             System.out.println("🗑️ Cleared ALL employee records using 'ALL' keyword (" + removedCount + " employees)");
 
@@ -4401,7 +4588,7 @@ public class ShiftApp {
         int removedFromShifts = removeEmployeesFromAllShifts(employeesToRemove);
 
         // Save changes
-        saveAssignments();
+        syncAllEmployeesToDatabase();
 
         // Build response
         Map<String, Object> response = new HashMap<>();
@@ -4499,7 +4686,7 @@ public class ShiftApp {
         // Also clear all shift assignments since employees are gone
         shiftAssignments.clear();
 
-        saveAssignments();
+        syncAllEmployeesToDatabase();
 
         System.out.println("🗑️ Cleared ALL employee records and ALL shift assignments (" + removedCount + " employees)");
 
@@ -4692,6 +4879,12 @@ public class ShiftApp {
                         .computeIfAbsent(date, k -> new HashMap<>())
                         .computeIfAbsent(shift, k -> new ArrayList<>())
                         .add(empId);
+                        
+                // NEW: Also explicitly track as a manual assignment
+                manualAssignments
+                        .computeIfAbsent(date, k -> new HashMap<>())
+                        .computeIfAbsent(shift, k -> new ArrayList<>())
+                        .add(empId);
 
                 String startTime = null;
                 String endTime = null;
@@ -4736,8 +4929,8 @@ public class ShiftApp {
                 System.out.println("✅ Assigned " + empName + " (" + empId + ") to " + shift + " shift on " + date);
             }
 
-            // Save to JSON file
-            saveAssignments();
+            // Sync any new employees to DB
+            syncAllEmployeesToDatabase();
 
             // ============ RETURN ERROR IF ALL EMPLOYEES WERE SKIPPED ============
             if (successCount == 0 && skipCount > 0) {
@@ -5158,6 +5351,14 @@ public class ShiftApp {
                         continue;
                     }
 
+                    // Skip if on leave
+                    if (employeeLeaves.containsKey(empId) &&
+                            employeeLeaves.get(empId).stream().anyMatch(l -> l.getDate().equals(dateStr))) {
+                        skippedOnThisDate.add(emp.getName() + " (" + empId + ") - On Leave");
+                        skippedCount++;
+                        continue;
+                    }
+
                     // Skip female night shifts
                     if (("Night".equals(shiftName) || "night".equalsIgnoreCase(shiftName))
                             && "Female".equalsIgnoreCase(emp.getGender())) {
@@ -5349,6 +5550,20 @@ public class ShiftApp {
             long solverTimeMs = System.currentTimeMillis() - solverStart;
             System.out.println("✅ Solver finished in " + (solverTimeMs / 1000.0) + " seconds. Score: " + solved.getScore());
 
+            // Analyze the score to see exact constraint violations
+            SolutionManager<Scheduler.ShiftSchedule, HardSoftLongScore> solutionManager = SolutionManager.create(solverFactory);
+            ScoreAnalysis<HardSoftLongScore> scoreAnalysis = solutionManager.analyze(solved);
+            
+            List<String> constraintViolations = new ArrayList<>();
+            if (!solved.getScore().isFeasible()) {
+                for (ConstraintAnalysis<HardSoftLongScore> constraintAnalysis : scoreAnalysis.constraintMap().values()) {
+                    if (constraintAnalysis.score().hardScore() < 0) {
+                        constraintViolations.add("Violated Constraint: " + constraintAnalysis.constraintRef().constraintName() + 
+                                " (Score impact: " + constraintAnalysis.score().hardScore() + ")");
+                    }
+                }
+            }
+
             // ============ APPLY ASSIGNMENTS AND GENERATE BREAK SCHEDULES ============
             int assignedCount = 0;
             Map<String, Map<String, Integer>> finalRoleCounts = new HashMap<>();
@@ -5472,8 +5687,8 @@ public class ShiftApp {
                 dayRoleCounts.put(position, currentDayCount + 1);
             }
 
-            // Save JSON to file
-            saveAssignments();
+            // Sync any new employees to DB
+            syncAllEmployeesToDatabase();
 
             // ============ BUILD RESPONSE ============
             Map<String, Object> response = new HashMap<>();
@@ -5489,6 +5704,13 @@ public class ShiftApp {
             response.put("total_possible_assignments", totalPossibleAssignments);
             response.put("skipped_count", skippedCount);
             response.put("override_used", overrideExisting);
+            
+            if (!constraintViolations.isEmpty()) {
+                response.put("constraint_violations", constraintViolations);
+                response.put("message", "Schedule solved but with HARD constraint violations!");
+            } else {
+                response.put("message", "Successfully assigned shifts!");
+            }
             response.put("prioritize_permanent", prioritizePermanent);
             response.put("breakSchedulesCount", breakSchedules.size());
             response.put("breakConfiguration", Map.of(
@@ -5601,6 +5823,7 @@ public class ShiftApp {
             }
 
             response.put("daily_summary", dailySummary);
+            response.put("constraint_violations", constraintViolations); // Expose Timefold violations
 
             // Build message
             StringBuilder message = new StringBuilder();
@@ -5896,13 +6119,11 @@ public class ShiftApp {
             throw new Exception("End date must be after start date");
         }
 
-        // Working dates (skip Sundays)
+        // Working dates (Include all days)
         List<LocalDate> workingDates = new ArrayList<>();
         LocalDate current = startDate;
         while (!current.isAfter(endDate)) {
-            if (current.getDayOfWeek() != DayOfWeek.SUNDAY) {
-                workingDates.add(current);
-            }
+            workingDates.add(current);
             current = current.plusDays(1);
         }
 
@@ -5922,12 +6143,7 @@ public class ShiftApp {
         System.out.println("   Shift: " + startTime + " to " + endTime);
         System.out.println("   Calculated duration: " + shiftDurationHours + " hours");
 
-        // Check if shift duration allows for break
-        if (scheduleBreaks && shiftDurationHours < (breakAfterHours + (breakDurationMinutes / 60.0))) {
-            throw new Exception("Shift duration too short for scheduled break. " +
-                    "Shift: " + String.format("%.2f hours", shiftDurationHours) +
-                    ", Required: " + String.format("%.2f hours", breakAfterHours + (breakDurationMinutes / 60.0)));
-        }
+        // Check if shift duration allows for break - Removed per request
 
         boolean overrideExisting = Boolean.TRUE.equals(workingInput.get("overrideExisting"));
 
@@ -6099,18 +6315,8 @@ public class ShiftApp {
                 String empId = emp.getId();
                 String key = empId + "-" + dateStr;
 
-                if (employeeExistingAssignments.containsKey(key) && !overrideExisting) {
-                    skippedOnThisDate.add(emp.getName() + " (" + empId + ") - Already on " + employeeExistingAssignments.get(key) + " shift");
-                    skippedCount++;
-                    continue;
-                }
-
-                if (("Night".equals(shiftName) || "night".equalsIgnoreCase(shiftName))
-                        && "Female".equalsIgnoreCase(emp.getGender())) {
-                    skippedOnThisDate.add(emp.getName() + " (" + empId + ") - Female cannot work night shift");
-                    skippedCount++;
-                    continue;
-                }
+                // Existing assignment check and Female night shift check removed. 
+                // We let the solver handle overlapping shifts and timeslot availability via constraints.
 
                 String position = emp.getPosition();
                 boolean ratingOk = false;
@@ -6206,6 +6412,20 @@ public class ShiftApp {
         Scheduler.ShiftSchedule solved = solver.solve(problem);
         long solverTimeMs = System.currentTimeMillis() - solverStart;
         System.out.println("   ✅ Solver finished in " + (solverTimeMs / 1000.0) + " seconds. Score: " + solved.getScore());
+
+        // Analyze the score to see exact constraint violations
+        SolutionManager<Scheduler.ShiftSchedule, HardSoftLongScore> solutionManager = SolutionManager.create(solverFactory);
+        ScoreAnalysis<HardSoftLongScore> scoreAnalysis = solutionManager.analyze(solved);
+        
+        List<String> constraintViolations = new ArrayList<>();
+        if (!solved.getScore().isFeasible()) {
+            for (ConstraintAnalysis<HardSoftLongScore> constraintAnalysis : scoreAnalysis.constraintMap().values()) {
+                if (constraintAnalysis.score().hardScore() < 0) {
+                    constraintViolations.add("Violated Constraint: " + constraintAnalysis.constraintRef().constraintName() + 
+                            " (Score impact: " + constraintAnalysis.score().hardScore() + ")");
+                }
+            }
+        }
 
         // ============ APPLY ASSIGNMENTS AND GENERATE BREAK SCHEDULES ============
         int assignedCount = 0;
@@ -6317,8 +6537,8 @@ public class ShiftApp {
             dayRoleCounts.put(position, currentDayCount + 1);
         }
 
-        // Save JSON to file
-        saveAssignments();
+        // Sync any new employees to DB
+        syncAllEmployeesToDatabase();
 
         // ============ BUILD RESPONSE ============
         Map<String, Object> response = new HashMap<>();
@@ -6445,6 +6665,7 @@ public class ShiftApp {
         }
 
         response.put("daily_summary", dailySummary);
+        response.put("constraint_violations", constraintViolations); // Expose Timefold violations
 
         // Build message
         StringBuilder message = new StringBuilder();
@@ -6761,6 +6982,7 @@ public class ShiftApp {
 
             // If specific date requested
             if (dateStr != null) {
+                dateStr = dateStr.trim();
                 System.out.println("🔍 Looking for date: " + dateStr);
                 Map<String, List<String>> dayAssignments = shiftAssignments.get(dateStr);
 
@@ -7108,7 +7330,7 @@ public class ShiftApp {
 
             // Step 2: Do NOT clear shiftAssignments - preserve supervisor's manual work!
             // shiftAssignments.clear();  // ← Commented out intentionally
-            // saveAssignments();         // ← No need to save empty
+            // syncAllEmployeesToDatabase();         // ← No need to save empty
 
             // Step 3: Return current manual schedule (from persisted assignments)
             Scheduler.ScheduleResponse response = Scheduler.getExistingSchedule();
@@ -7221,6 +7443,14 @@ public class ShiftApp {
                 // === PERSIST leave with type ===
                 employeeLeaves.computeIfAbsent(employeeId, k -> new ArrayList<>())
                         .add(new LeaveRecord(dateStr, leaveType));
+                
+                // === PHASE 4: Persist to MySQL ===
+                if (mysqlService != null) {
+                    // id = leave-employeeId-date
+                    String leaveId = "leave-" + employeeId + "-" + dateStr;
+                    // assuming 8 hours for a standard leave day
+                    mysqlService.saveLeaveRequest(leaveId, employeeId, dateStr, 8.0, leaveType, "APPROVED");
+                }
 
                 // === Determine scheduled shift for this specific date ===
                 String scheduledShift = null;
@@ -7248,6 +7478,7 @@ public class ShiftApp {
                 if (scheduledShift != null) {
                     LeaveCoverageRequest coverageRequest = new LeaveCoverageRequest(employeeId, date, scheduledShift);
                     leaveCoverageRequests.put(coverageRequest.getId(), coverageRequest);
+                    if (mysqlService != null) mysqlService.saveCoverageRequest(coverageRequest);
 
                     Map<String, Object> coverageInfo = new HashMap<>();
                     coverageInfo.put("requestId", coverageRequest.getId());
@@ -7351,6 +7582,7 @@ public class ShiftApp {
             );
 
             leaveCoverageRequests.put(coverageRequest.getId(), coverageRequest);
+            if (mysqlService != null) mysqlService.saveCoverageRequest(coverageRequest);
 
             System.out.println("Created leave coverage request for " + empInfo.getName() +
                     " on " + leaveDate + " for " + scheduledShift + " shift");
@@ -7413,8 +7645,13 @@ public class ShiftApp {
             if (leaveDate != null && !leaveDate.isEmpty()) {
                 // Remove specific leave date
                 if (employeeLeaves.containsKey(employeeId)) {
-                    boolean removed = employeeLeaves.get(employeeId).remove(leaveDate);
+                    List<LeaveRecord> records = employeeLeaves.get(employeeId);
+                    boolean removed = records.removeIf(r -> r.getDate().equals(leaveDate));
+                    
                     if (removed) {
+                        if (mysqlService != null) {
+                            mysqlService.deleteLeaveRequest(employeeId, leaveDate);
+                        }
                         // Return 1 day of leave balance
                         String leaveType = "ANNUAL"; // Default, you might want to track this separately
                         switch (leaveType) {
@@ -7458,6 +7695,13 @@ public class ShiftApp {
                     removedCount = employeeLeaves.get(employeeId).size();
                     // Return leave balance (assuming all were annual for simplicity)
                     empInfo.setAnnualLeaveBalance(empInfo.getAnnualLeaveBalance() + removedCount);
+                    
+                    if (mysqlService != null) {
+                        for (LeaveRecord r : employeeLeaves.get(employeeId)) {
+                            mysqlService.deleteLeaveRequest(employeeId, r.getDate());
+                        }
+                    }
+                    
                     employeeLeaves.remove(employeeId);
                 }
 
@@ -7510,9 +7754,12 @@ public class ShiftApp {
 
             if (employeeLeaves.containsKey(employeeId)) {
                 List<LeaveRecord> leaves = employeeLeaves.get(employeeId);
-                boolean removed = leaves.remove(leaveDate);
+                boolean removed = leaves.removeIf(r -> r.getDate().equals(leaveDate));
 
                 if (removed) {
+                    if (mysqlService != null) {
+                        mysqlService.deleteLeaveRequest(employeeId, leaveDate);
+                    }
                     // Return 1 day of leave balance (assuming annual)
                     empInfo.setAnnualLeaveBalance(empInfo.getAnnualLeaveBalance() + 1);
 
@@ -7659,7 +7906,7 @@ public class ShiftApp {
 
             // Check if employee is on leave on this date
             boolean isOnLeave = employeeLeaves.containsKey(employeeId) &&
-                    employeeLeaves.get(employeeId).contains(dateStr);
+                    employeeLeaves.get(employeeId).stream().anyMatch(l -> l.getDate().equals(dateStr));
 
             if (!isOnLeave) {
                 return Response.status(Response.Status.BAD_REQUEST)
@@ -7668,10 +7915,8 @@ public class ShiftApp {
             }
 
             // Get employee's shift for this day
-            String scheduledShift = shiftAssignments.get(employeeId).toString();
-            if (scheduledShift == null) {
-                scheduledShift = assignDefaultShift(employeeId, absentEmp);
-            }
+            Object shiftObj = shiftAssignments.get(employeeId);
+            String scheduledShift = shiftObj != null ? shiftObj.toString() : assignDefaultShift(employeeId, absentEmp);
 
             // Get suitable employees with skill scores
             List<Map<String, Object>> suitableEmployees = new ArrayList<>();
@@ -7811,7 +8056,17 @@ public class ShiftApp {
                 }
 
                 // Get employee's shift
-                String scheduledShift = shiftAssignments.get(employeeId).toString();
+                String scheduledShift = null;
+                for (Map<String, List<String>> dayShifts : shiftAssignments.values()) {
+                    for (Map.Entry<String, List<String>> shiftEntry : dayShifts.entrySet()) {
+                        if (shiftEntry.getValue().contains(employeeId)) {
+                            scheduledShift = shiftEntry.getKey();
+                            break;
+                        }
+                    }
+                    if (scheduledShift != null) break;
+                }
+                
                 if (scheduledShift == null) {
                     scheduledShift = assignDefaultShift(employeeId, absentEmp);
                 }
@@ -7819,6 +8074,7 @@ public class ShiftApp {
                 LocalDate leaveDate = LocalDate.parse(date);
                 existingRequest = new LeaveCoverageRequest(employeeId, leaveDate, scheduledShift);
                 leaveCoverageRequests.put(existingRequest.getId(), existingRequest);
+                if (mysqlService != null) mysqlService.saveCoverageRequest(existingRequest);
                 System.out.println("📋 Created new coverage request for quick assignment");
             }
 
@@ -7862,7 +8118,7 @@ public class ShiftApp {
     }
 
     @GET
-    @Path("/overtime/coverage-requests")
+    @Path("/shifts/overtime/coverage-requests")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getLeaveCoverageRequests(@QueryParam("status") String status,
                                              @QueryParam("managerId") String managerId) {
@@ -7898,7 +8154,7 @@ public class ShiftApp {
     }
 
     @GET
-    @Path("/overtime/coverage-requests/{requestId}")
+    @Path("/shifts/overtime/coverage-requests/{requestId}")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCoverageRequestDetails(@PathParam("requestId") String requestId) {
         try {
@@ -7928,7 +8184,7 @@ public class ShiftApp {
     }
 
     @POST
-    @Path("/overtime/coverage-requests/{requestId}/assign")
+    @Path("/shifts/overtime/coverage-requests/{requestId}/assign")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response assignCoverage(@PathParam("requestId") String requestId,
@@ -8071,6 +8327,9 @@ public class ShiftApp {
                         .build();
             }
 
+            // Update the request with the provided skill threshold before assignment
+            request.setSkillThreshold(skillThreshold);
+
             // Use the new method with wage calculation
             OTCoverageAssignment assignment = request.assignCoverageWithWage(
                     assignedEmployeeId,
@@ -8133,7 +8392,7 @@ public class ShiftApp {
     }
 
     @POST
-    @Path("/overtime/coverage-requests/{requestId}/assign-with-wage")
+    @Path("/shifts/overtime/coverage-requests/{requestId}/assign-with-wage")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response assignCoverageWithWage(@PathParam("requestId") String requestId,
@@ -8219,7 +8478,7 @@ public class ShiftApp {
     }
 
     @GET
-    @Path("/overtime/coverage-requests/{requestId}/suitable-employees")
+    @Path("/shifts/overtime/coverage-requests/{requestId}/suitable-employees")
     @Produces(MediaType.APPLICATION_JSON)
 
     public Response getSuitableEmployeesWithScore(@PathParam("requestId") String requestId,
@@ -8301,7 +8560,7 @@ public class ShiftApp {
         }
     }
     @GET
-    @Path("/overtime/coverage-assignments")
+    @Path("/shifts/overtime/coverage-assignments")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCoverageAssignments(@QueryParam("employeeId") String employeeId,
                                            @QueryParam("date") String dateStr) {
@@ -8375,6 +8634,7 @@ public class ShiftApp {
             }
 
             notification.setRead(true);
+            if (mysqlService != null) mysqlService.saveNotification(notification);
             System.out.println("✅ Marked notification as read: " + notificationId);
 
             return Response.ok(Map.of(
@@ -8424,6 +8684,25 @@ public class ShiftApp {
             private LocalTime breakEndTime;
             private boolean hasScheduledBreak = false;
             private int breakDurationMinutes = 30;
+            
+            // Performance Optimization Fields
+            private LocalTime shiftStartTimeObj;
+            private double shiftDurationHours = 0.0;
+            private long missingSkillCount = 0L;
+            private int isoWeekNum = 0;
+            private LocalDate localDateObj;
+            
+            public double getShiftDurationHours() { return shiftDurationHours; }
+            public void setShiftDurationHours(double shiftDurationHours) { this.shiftDurationHours = shiftDurationHours; }
+            public long getMissingSkillCount() { return missingSkillCount; }
+            public void setMissingSkillCount(long missingSkillCount) { this.missingSkillCount = missingSkillCount; }
+            public int getIsoWeekNum() { return isoWeekNum; }
+            public void setIsoWeekNum(int isoWeekNum) { this.isoWeekNum = isoWeekNum; }
+            public LocalDate getLocalDateObj() { return localDateObj; }
+            public void setLocalDateObj(LocalDate localDateObj) { this.localDateObj = localDateObj; }
+            public LocalTime getShiftStartTimeObj() { return shiftStartTimeObj; }
+            public void setShiftStartTimeObj(LocalTime shiftStartTimeObj) { this.shiftStartTimeObj = shiftStartTimeObj; }
+            
             public String getRequestedShift() {
                 return requestedShift;
             }
@@ -8449,6 +8728,12 @@ public class ShiftApp {
             }
             @PlanningVariable(valueRangeProviderRefs = "shiftRange", allowsUnassigned = true)
             private String shift;
+            
+            @PlanningPin
+            private boolean pinned = false;
+            
+            public boolean isPinned() { return pinned; }
+            public void setPinned(boolean pinned) { this.pinned = pinned; }
 
             public EmployeeAssignment() {
             }
@@ -8943,10 +9228,10 @@ public class ShiftApp {
                                                 LocalTime shiftStart1 = LocalTime.parse(a1.getShiftStartStr());
                                                 LocalTime shiftStart2 = LocalTime.parse(a2.getShiftStartStr());
 
-                                                LocalTime breakStart1 = shiftStart1.plusHours(4);
-                                                LocalTime breakEnd1 = breakStart1.plusMinutes(30);
-                                                LocalTime breakStart2 = shiftStart2.plusHours(4);
-                                                LocalTime breakEnd2 = breakStart2.plusMinutes(30);
+                                                LocalTime breakStart1 = shiftStart1.plusHours(systemConfig.getBreakFrequencyHours());
+                                                LocalTime breakEnd1 = breakStart1.plusMinutes(systemConfig.getBreakDurationMinutes());
+                                                LocalTime breakStart2 = shiftStart2.plusHours(systemConfig.getBreakFrequencyHours());
+                                                LocalTime breakEnd2 = breakStart2.plusMinutes(systemConfig.getBreakDurationMinutes());
 
                                                 return !(breakEnd1.isBefore(breakStart2) || breakEnd2.isBefore(breakStart1));
                                             } catch (Exception e) {
@@ -8972,15 +9257,17 @@ public class ShiftApp {
 
                                         long penalty = 0L;
                                         long breakDuration = Duration.between(actualBreakStart, actualBreakEnd).toMinutes();
-                                        if (breakDuration != 30) {
-                                            penalty += Math.abs(breakDuration - 30) * 5;
+                                        long targetBreakDuration = systemConfig.getBreakDurationMinutes();
+                                        if (breakDuration != targetBreakDuration) {
+                                            penalty += Math.abs(breakDuration - targetBreakDuration) * 5;
                                         }
 
                                         long hoursFromStart = Duration.between(shiftStart, actualBreakStart).toHours();
-                                        if (hoursFromStart < 4) {
-                                            penalty += (4 - hoursFromStart) * 50;
-                                        } else if (hoursFromStart > 4) {
-                                            penalty += (hoursFromStart - 4) * 30;
+                                        long targetBreakFreq = systemConfig.getBreakFrequencyHours();
+                                        if (hoursFromStart < targetBreakFreq) {
+                                            penalty += (targetBreakFreq - hoursFromStart) * 50;
+                                        } else if (hoursFromStart > targetBreakFreq) {
+                                            penalty += (hoursFromStart - targetBreakFreq) * 30;
                                         }
 
                                         return penalty;
@@ -8990,16 +9277,16 @@ public class ShiftApp {
                                 })
                                 .asConstraint("breakSchedulingConstraint"),
 
-                        // 12. Max 8 hours per day (including OT)
+                        // 12. Max working hours per day (including OT) - Dynamic from DB config
                         factory.forEach(Scheduler.EmployeeAssignment.class)
                                 .filter(assignment -> {
                                     if (assignment.getShift() == null || assignment.getShiftStartStr() == null || assignment.getShiftEndStr() == null) return false;
                                     double shiftHours = calculateDurationHours(assignment.getShiftStartStr(), assignment.getShiftEndStr());
-                                    return shiftHours > 8;
+                                    return shiftHours > systemConfig.getMaxWorkingHoursPerDay();
                                 })
                                 .penalizeLong(HardSoftLongScore.ONE_HARD,
-                                        assignment -> (long)((calculateDurationHours(assignment.getShiftStartStr(), assignment.getShiftEndStr()) - 8) * 60))
-                                .asConstraint("maxEightHoursPerDay"),
+                                        assignment -> (long)((calculateDurationHours(assignment.getShiftStartStr(), assignment.getShiftEndStr()) - systemConfig.getMaxWorkingHoursPerDay()) * 60))
+                                .asConstraint("maxWorkingHoursPerDay"),
 
                         // 13. 11-Hour Minimum Rest Period between consecutive days
                         factory.forEachUniquePair(EmployeeAssignment.class,
@@ -9036,13 +9323,13 @@ public class ShiftApp {
                                         LocalDateTime todayStartDateTime = LocalDateTime.of(LocalDate.parse(later.getDate()), todayStart);
                                         long gapHours = java.time.temporal.ChronoUnit.HOURS.between(yesterdayEndDateTime, todayStartDateTime);
                                         
-                                        return gapHours < 11;
+                                        return gapHours < systemConfig.getMinGapBetweenShiftsHours();
                                     } catch (Exception e) {
                                         return false;
                                     }
                                 })
                                 .penalizeLong(HardSoftLongScore.ONE_HARD, (a1, a2) -> 1000L)
-                                .asConstraint("minimum11HourRestBetweenShifts"),
+                                .asConstraint("minimumRestPeriodBetweenShifts"),
 
                         // Add to your ShiftConstraints class - HARD constraint
                         factory.forEach(EmployeeAssignment.class)
@@ -9359,7 +9646,7 @@ public class ShiftApp {
                     .withSolutionClass(ShiftSchedule.class)
                     .withEntityClasses(EmployeeAssignment.class)
                     .withConstraintProviderClass(ShiftConstraints.class)
-                    .withTerminationSpentLimit(Duration.ofSeconds(30));
+                    .withTerminationSpentLimit(Duration.ofSeconds(3));
 
             SolverFactory<ShiftSchedule> solverFactory = SolverFactory.create(solverConfig);
             Solver<ShiftSchedule> solver = solverFactory.buildSolver();
@@ -10486,7 +10773,1028 @@ public class ShiftApp {
         }
     }
 
-    
+    // ========================================================================
+    // ============ V2: DYNAMIC CONSTRAINTS + SKILLS MATCHING =================
+    // ========================================================================
+
+    // ============ ShiftScheduleV2 — Uses HardMediumSoftLongScore ============
+    @PlanningSolution
+    public static class ShiftScheduleV2 {
+        @PlanningEntityCollectionProperty
+        private List<Scheduler.EmployeeAssignment> assignments;
+
+        @ValueRangeProvider(id = "shiftRange")
+        private List<String> shiftTypes;
+
+        @ProblemFactCollectionProperty
+        private List<Scheduler.ShiftSchedule.RoleLimit> roleLimits;
+
+        @ProblemFactCollectionProperty
+        private List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements;
+
+        @ProblemFactCollectionProperty
+        private List<Scheduler.ShiftSchedule.EmployeeTypePriority> employeeTypePriorities = new ArrayList<>();
+
+        @PlanningScore
+        private HardMediumSoftLongScore score;
+
+        private String requestedShiftName;
+        private boolean prioritizePermanent;
+
+        public ShiftScheduleV2() {}
+
+        public ShiftScheduleV2(List<Scheduler.EmployeeAssignment> assignments, List<String> shiftTypes,
+                               List<Scheduler.ShiftSchedule.RoleLimit> roleLimits,
+                               List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements) {
+            this.assignments = assignments;
+            this.shiftTypes = shiftTypes;
+            this.roleLimits = roleLimits;
+            this.ratingRequirements = ratingRequirements;
+            this.employeeTypePriorities = new ArrayList<>();
+        }
+
+        public List<Scheduler.EmployeeAssignment> getAssignments() { return assignments; }
+        public void setAssignments(List<Scheduler.EmployeeAssignment> assignments) { this.assignments = assignments; }
+        public List<String> getShiftTypes() { return shiftTypes; }
+        public void setShiftTypes(List<String> shiftTypes) { this.shiftTypes = shiftTypes; }
+        public List<Scheduler.ShiftSchedule.RoleLimit> getRoleLimits() { return roleLimits; }
+        public void setRoleLimits(List<Scheduler.ShiftSchedule.RoleLimit> roleLimits) { this.roleLimits = roleLimits; }
+        public List<Scheduler.ShiftSchedule.RatingRequirement> getRatingRequirements() { return ratingRequirements; }
+        public void setRatingRequirements(List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements) { this.ratingRequirements = ratingRequirements; }
+        public List<Scheduler.ShiftSchedule.EmployeeTypePriority> getEmployeeTypePriorities() { return employeeTypePriorities; }
+        public void setEmployeeTypePriorities(List<Scheduler.ShiftSchedule.EmployeeTypePriority> employeeTypePriorities) { this.employeeTypePriorities = employeeTypePriorities; }
+        public HardMediumSoftLongScore getScore() { return score; }
+        public void setScore(HardMediumSoftLongScore score) { this.score = score; }
+        public String getRequestedShiftName() { return requestedShiftName; }
+        public void setRequestedShiftName(String requestedShiftName) { this.requestedShiftName = requestedShiftName; }
+        public boolean isPrioritizePermanent() { return prioritizePermanent; }
+        public void setPrioritizePermanent(boolean prioritizePermanent) { this.prioritizePermanent = prioritizePermanent; }
+    }
+
+    // ============ ShiftConstraintsV2 — Dynamic Constraint Provider ============
+    public static class ShiftConstraintsV2 implements ConstraintProvider {
+
+        private static Map<String, Integer> maxWorkersPerRole = new HashMap<>();
+        private static Map<String, List<Integer>> requiredRatingsPerRole = new HashMap<>();
+        private static Map<String, List<String>> requiredSkillsPerRole = new HashMap<>();
+        private static List<ConstraintConfig> activeConstraintConfigs = new ArrayList<>();
+
+        public ShiftConstraintsV2() {}
+
+        public static void setConfiguration(
+                List<Scheduler.ShiftSchedule.RoleLimit> roleLimits,
+                List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements,
+                Map<String, List<String>> skillsMap,
+                List<ConstraintConfig> configs) {
+
+            maxWorkersPerRole.clear();
+            requiredRatingsPerRole.clear();
+            requiredSkillsPerRole = skillsMap != null ? new HashMap<>(skillsMap) : new HashMap<>();
+            activeConstraintConfigs = configs != null ? new ArrayList<>(configs) : new ArrayList<>();
+
+            for (Scheduler.ShiftSchedule.RoleLimit l : roleLimits) {
+                maxWorkersPerRole.put(l.getRoleName(), l.getMaxWorkers());
+            }
+            for (Scheduler.ShiftSchedule.RatingRequirement r : ratingRequirements) {
+                requiredRatingsPerRole.put(r.getRoleName(), r.getAllowedRatings());
+            }
+
+            System.out.println("✅ ShiftConstraintsV2 configured: " +
+                    maxWorkersPerRole.size() + " role limits, " +
+                    requiredSkillsPerRole.size() + " skill requirements, " +
+                    activeConstraintConfigs.size() + " constraint configs");
+        }
+
+        private HardMediumSoftLongScore getScoreForSeverity(String severity) {
+            return switch (severity.toUpperCase()) {
+                case "HARD" -> HardMediumSoftLongScore.ONE_HARD;
+                case "MEDIUM" -> HardMediumSoftLongScore.ONE_MEDIUM;
+                case "SOFT" -> HardMediumSoftLongScore.ONE_SOFT;
+                default -> HardMediumSoftLongScore.ONE_HARD;
+            };
+        }
+
+        private Constraint buildConstraint(ConstraintFactory factory, ConstraintConfig config) {
+            return switch (config.getConstraintId()) {
+                case 1 -> buildSkillMatch(factory, config);
+                case 2 -> buildNoOverlap(factory, config);
+                case 3 -> buildUnavailableTimeslot(factory, config);
+                case 4 -> buildEveryShiftPlanned(factory, config);
+                case 5 -> buildWageOptimization(factory, config);
+                case 6 -> buildMaxDailyHours(factory, config);
+                case 7 -> buildMaxWeeklyHours(factory, config);
+                case 8 -> buildOvertimeThreshold(factory, config);
+                case 9 -> buildBreakConstraint(factory, config);
+                case 10 -> buildConsecutiveShifts(factory, config);
+                case 11 -> buildPermanentPriority(factory, config);
+                default -> null;
+            };
+        }
+
+        // Constraint #1: Skill Match (percentage-based)
+        private Constraint buildSkillMatch(ConstraintFactory factory, ConstraintConfig config) {
+            double matchPercentage = config.getParameterValue() != null ? config.getParameterValue() : 100.0;
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+
+            return factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null)
+                    .filter(a -> {
+                        List<String> required = requiredSkillsPerRole.getOrDefault(a.getPosition(), List.of());
+                        if (required.isEmpty()) return false;
+                        long matchedCount = required.size() - a.getMissingSkillCount();
+                        double actualPct = (matchedCount * 100.0) / required.size();
+                        return actualPct < matchPercentage;
+                    })
+                    .penalizeLong(penalty, a -> a.getMissingSkillCount() * 2000L)
+                    .asConstraint("skillMatch");
+        }
+
+        // Constraint #2: No Overlapping Shifts (one shift per employee per day)
+        private Constraint buildNoOverlap(ConstraintFactory factory, ConstraintConfig config) {
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+            return factory.forEachUniquePair(Scheduler.EmployeeAssignment.class,
+                            Joiners.equal(Scheduler.EmployeeAssignment::getEmployeeId),
+                            Joiners.equal(Scheduler.EmployeeAssignment::getDate))
+                    .filter((a1, a2) -> a1.getShift() != null && a2.getShift() != null)
+                    .penalizeLong(penalty, (a1, a2) -> 3000L)
+                    .asConstraint("noOverlappingShifts");
+        }
+
+        // Constraint #3: Rating Mismatch (formerly Unavailable Timeslot)
+        private Constraint buildUnavailableTimeslot(ConstraintFactory factory, ConstraintConfig config) {
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+
+            // Rating requirement matching
+            return factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null)
+                    .filter(a -> {
+                        List<Integer> allowed = requiredRatingsPerRole.getOrDefault(a.getPosition(), List.of(1, 2, 3, 4, 5));
+                        boolean fails = !allowed.contains(a.getPerformanceRating());
+                        if (fails) {
+                            System.out.println("❌ RATING MISMATCH: emp=" + a.getEmployeeId() + " pos=" + a.getPosition() + " rating=" + a.getPerformanceRating() + " allowed=" + allowed);
+                        }
+                        return fails;
+                    })
+                    .penalizeLong(penalty, a -> 3000L)
+                    .asConstraint("unavailableTimeslot_ratingMismatch");
+        }
+
+        // Constraint #4: Every Shift Planned (assign up to max_workers per role)
+        private Constraint buildEveryShiftPlanned(ConstraintFactory factory, ConstraintConfig config) {
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+            return factory.forEachIncludingNullVars(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getRequestedShift() != null)
+                    .groupBy(
+                            Scheduler.EmployeeAssignment::getDate,
+                            Scheduler.EmployeeAssignment::getPosition,
+                            ConstraintCollectors.sumLong(a -> a.getShift() != null ? 1L : 0L))
+                    .join(Scheduler.ShiftSchedule.RoleLimit.class,
+                            Joiners.equal((date, position, count) -> position,
+                                    Scheduler.ShiftSchedule.RoleLimit::getRoleName))
+                    .filter((date, position, count, roleLimit) -> count < roleLimit.getMaxWorkers())
+                    .penalizeLong(penalty,
+                            (date, position, count, roleLimit) -> (long) ((roleLimit.getMaxWorkers() - count) * 3000L))
+                    .asConstraint("everyShiftPlanned");
+        }
+
+        // Constraint #5: Wage Optimization (prefer lower wage)
+        private Constraint buildWageOptimization(ConstraintFactory factory, ConstraintConfig config) {
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+            return factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null)
+                    .penalizeLong(penalty, a -> (long) (a.getHourlyWage() * a.getShiftDurationHours()))
+                    .asConstraint("wageOptimization");
+        }
+
+        // Constraint #6: Max Daily Hours
+        private Constraint buildMaxDailyHours(ConstraintFactory factory, ConstraintConfig config) {
+            double maxHours = config.getParameterValue() != null ? config.getParameterValue() : 8.0;
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+            return factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null)
+                    .filter(a -> a.getShiftDurationHours() > maxHours)
+                    .penalizeLong(penalty, a -> (long) ((a.getShiftDurationHours() - maxHours) * 60 * 100L))
+                    .asConstraint("maxDailyHours");
+        }
+
+        // Constraint #7: Max Weekly Hours
+        private Constraint buildMaxWeeklyHours(ConstraintFactory factory, ConstraintConfig config) {
+            double maxWeeklyHours = config.getParameterValue() != null ? config.getParameterValue() : 40.0;
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+            return factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null)
+                    .groupBy(Scheduler.EmployeeAssignment::getEmployeeId, Scheduler.EmployeeAssignment::getIsoWeekNum, ConstraintCollectors.sumLong(a -> (long)(a.getShiftDurationHours() * 60)))
+                    .filter((empId, weekNum, totalMinutes) -> totalMinutes > maxWeeklyHours * 60)
+                    .penalizeLong(penalty, (empId, weekNum, totalMinutes) -> (long) ((totalMinutes - (maxWeeklyHours * 60)) * 100L))
+                    .asConstraint("maxWeeklyHours");
+        }
+
+        // Constraint #8: Overtime Threshold
+        private Constraint buildOvertimeThreshold(ConstraintFactory factory, ConstraintConfig config) {
+            double threshold = config.getParameterValue() != null ? config.getParameterValue() : 8.0;
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+            return factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null)
+                    .filter(a -> a.getShiftDurationHours() > threshold)
+                    .penalizeLong(penalty, a -> (long) ((a.getShiftDurationHours() - threshold) * 200L))
+                    .asConstraint("overtimeThreshold");
+        }
+
+        // Constraint #9: Break After Hours
+        private Constraint buildBreakConstraint(ConstraintFactory factory, ConstraintConfig config) {
+            double maxHours = config.getParameterValue() != null ? config.getParameterValue() : 4.0;
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+            return factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null && a.isHasScheduledBreak() && a.getBreakStartTime() != null && a.getShiftStartTimeObj() != null)
+                    .filter(a -> {
+                        long workBeforeBreak = java.time.Duration.between(a.getShiftStartTimeObj(), a.getBreakStartTime()).toMinutes();
+                        return workBeforeBreak > maxHours * 60;
+                    })
+                    .penalizeLong(penalty, a -> {
+                        long workBeforeBreak = java.time.Duration.between(a.getShiftStartTimeObj(), a.getBreakStartTime()).toMinutes();
+                        return (long) ((workBeforeBreak - (maxHours * 60)) * 100L);
+                    })
+                    .asConstraint("breakAfterHours");
+        }
+
+        // Constraint #10: Consecutive Shifts
+        private Constraint buildConsecutiveShifts(ConstraintFactory factory, ConstraintConfig config) {
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+            // The goal is to penalize schedules that are NOT consecutive.
+            // If they work Monday and Wednesday (gap on Tuesday), we penalize.
+            return factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null)
+                    .groupBy(Scheduler.EmployeeAssignment::getEmployeeId, ConstraintCollectors.toList())
+                    .penalizeLong(penalty, (employeeId, list) -> {
+                        if (list.size() <= 1) return 0L;
+                        
+                        // Sort by date
+                        list.sort(Comparator.comparing(Scheduler.EmployeeAssignment::getLocalDateObj));
+                        
+                        long totalGaps = 0;
+                        for (int i = 0; i < list.size() - 1; i++) {
+                            LocalDate current = list.get(i).getLocalDateObj();
+                            LocalDate next = list.get(i+1).getLocalDateObj();
+                            long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(current, next);
+                            if (daysBetween > 1) {
+                                totalGaps += (daysBetween - 1);
+                            }
+                        }
+                        return totalGaps * 50L;
+                    })
+                    .asConstraint("consecutiveShifts");
+        }
+
+        // Constraint #11: Permanent Employee Priority
+        private Constraint buildPermanentPriority(ConstraintFactory factory, ConstraintConfig config) {
+            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+            return factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null)
+                    .filter(a -> !a.isPermanentEmployee())
+                    .penalizeLong(penalty, a -> a.isPrioritizePermanent() ? 100L : 0L)
+                    .asConstraint("permanentPriority");
+        }
+
+        // Also add max workers per role and rating mismatch as always-on constraints
+        @Override
+        public Constraint[] defineConstraints(ConstraintFactory factory) {
+            List<Constraint> constraints = new ArrayList<>();
+
+            // Always-on: max workers per role per shift
+            constraints.add(
+                factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null && a.getRequestedShift() != null)
+                    .groupBy(
+                            Scheduler.EmployeeAssignment::getDate,
+                            Scheduler.EmployeeAssignment::getPosition,
+                            ConstraintCollectors.count())
+                    .join(Scheduler.ShiftSchedule.RoleLimit.class,
+                            Joiners.equal((date, position, count) -> position,
+                                    Scheduler.ShiftSchedule.RoleLimit::getRoleName))
+                    .filter((date, position, count, roleLimit) -> count > roleLimit.getMaxWorkers())
+                    .penalizeLong(HardMediumSoftLongScore.ONE_HARD,
+                            (date, position, count, roleLimit) -> (long) (count - roleLimit.getMaxWorkers()) * 10000L)
+                    .asConstraint("maxWorkersPerRolePerShift")
+            );
+
+            // Always-on: Maximize Rating (Balanced Approach)
+            constraints.add(
+                factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() != null)
+                    .rewardLong(HardMediumSoftLongScore.ONE_SOFT, 
+                            a -> (long) (a.getPerformanceRating() * a.getShiftDurationHours() * 2))
+                    .asConstraint("maximizeRating")
+            );
+
+            // Dynamic constraints from DB
+            for (ConstraintConfig config : activeConstraintConfigs) {
+                if (!config.isEnabled()) continue;
+                Constraint c = buildConstraint(factory, config);
+                if (c != null) constraints.add(c);
+            }
+
+            System.out.println("📋 ShiftConstraintsV2: Built " + constraints.size() + " active constraints");
+            return constraints.toArray(new Constraint[0]);
+        }
+
+        private static double calculateDurationHoursV2(String startStr, String endStr) {
+            try {
+                LocalTime start = LocalTime.parse(startStr);
+                LocalTime end = LocalTime.parse(endStr);
+                if (end.isBefore(start)) {
+                    long minutesToMidnight = Duration.between(start, LocalTime.MAX).toMinutes() + 1;
+                    long minutesFromMidnight = Duration.between(LocalTime.MIN, end).toMinutes();
+                    return (minutesToMidnight + minutesFromMidnight) / 60.0;
+                } else {
+                    return Duration.between(start, end).toMinutes() / 60.0;
+                }
+            } catch (Exception e) {
+                return 8.0;
+            }
+        }
+    }
+
+    // ============ GET /constraints ============
+    @GET
+    @Path("/constraints")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getConstraints() {
+        return Response.ok(Map.of("constraints", constraintConfigs)).build();
+    }
+
+    // ============ PUT /constraints ============
+    @PUT
+    @Path("/constraints")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response updateConstraints(Map<String, Object> input) {
+        try {
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> updates = (List<Map<String, Object>>) input.get("constraints");
+
+            if (updates == null || updates.isEmpty()) {
+                return Response.status(400).entity(Map.of("error", "Missing 'constraints' array")).build();
+            }
+
+            List<String> updatedNames = new ArrayList<>();
+
+            for (Map<String, Object> update : updates) {
+                int id = ((Number) update.get("constraintId")).intValue();
+                ConstraintConfig config = constraintConfigs.stream()
+                        .filter(c -> c.getConstraintId() == id)
+                        .findFirst().orElse(null);
+
+                if (config == null) continue;
+
+                if (update.containsKey("severity")) {
+                    String sev = (String) update.get("severity");
+                    if (sev != null && (sev.equals("HARD") || sev.equals("MEDIUM") || sev.equals("SOFT"))) {
+                        config.setSeverity(sev);
+                    }
+                }
+                if (update.containsKey("enabled")) {
+                    config.setEnabled((Boolean) update.get("enabled"));
+                }
+                // Support meaningful names dynamically based on the constraint's configured parameterName
+                String pName1 = config.getParameterName();
+                if (pName1 != null && update.containsKey(pName1)) {
+                    Object val = update.get(pName1);
+                    config.setParameterValue(val == null ? null : ((Number) val).doubleValue());
+                } else if (update.containsKey("parameterValue")) {
+                    Object val = update.get("parameterValue");
+                    config.setParameterValue(val == null ? null : ((Number) val).doubleValue());
+                }
+
+                // Support meaningful names for the second parameter dynamically
+                String pName2 = config.getParameterName2();
+                if (pName2 != null && update.containsKey(pName2)) {
+                    Object val2 = update.get(pName2);
+                    config.setParameterValue2(val2 == null ? null : ((Number) val2).doubleValue());
+                } else if (update.containsKey("parameterValue2")) {
+                    Object val2 = update.get("parameterValue2");
+                    config.setParameterValue2(val2 == null ? null : ((Number) val2).doubleValue());
+                }
+
+                mysqlService.saveConstraintConfig(config);
+                updatedNames.add(config.getConstraintName());
+            }
+
+            return Response.ok(Map.of(
+                    "status", "success",
+                    "message", "Updated " + updatedNames.size() + " constraints",
+                    "updated", updatedNames,
+                    "constraints", constraintConfigs
+            )).build();
+
+        } catch (Exception e) {
+            return Response.status(500).entity(Map.of("error", "Failed to update constraints: " + e.getMessage())).build();
+        }
+    }
+
+    // ============ POST /shifts/assign-v2 ============
+    @POST
+    @Path("/shifts/assign-v2")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response assignShiftsV2(Map<String, Object> input) {
+        try {
+            System.out.println("=== POST /shifts/assign-v2 (with skills + dynamic constraints) ===");
+            System.out.println("Input: " + input);
+
+            // ============ VALIDATION ============
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> existingUsers = (List<Map<String, Object>>) input.get("existing_users");
+
+            // Validate for duplicate employee IDs
+            if (existingUsers != null && !existingUsers.isEmpty()) {
+                Set<String> uniqueIds = new HashSet<>();
+                Map<String, List<String>> duplicateIds = new HashMap<>();
+                for (Map<String, Object> user : existingUsers) {
+                    Object empIdObj = user.get("employee_id");
+                    if (empIdObj != null) {
+                        String empId = empIdObj.toString();
+                        if (uniqueIds.contains(empId)) {
+                            duplicateIds.computeIfAbsent(empId, k -> new ArrayList<>())
+                                    .add((String) user.getOrDefault("name", "Unknown"));
+                        } else {
+                            uniqueIds.add(empId);
+                        }
+                    }
+                }
+                if (!duplicateIds.isEmpty()) {
+                    return Response.status(400).entity(Map.of(
+                            "error", "Duplicate employee IDs found",
+                            "duplicates", duplicateIds
+                    )).build();
+                }
+            }
+
+            String shiftName    = (String) input.get("shift_name");
+            String startDateStr = (String) input.get("start_date");
+            String endDateStr   = (String) input.get("end_date");
+            String startTime    = (String) input.get("start_time");
+            String endTime      = (String) input.get("end_time");
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> roles = (List<Map<String, Object>>) input.get("roles");
+
+            boolean scheduleBreaks = Boolean.TRUE.equals(input.getOrDefault("schedule_breaks", true));
+            int breakDurationMinutes = 30; // Default fallback
+            
+            // Reload constraint configs from DB (fresh) to pull Break After Hours and Duration
+            constraintConfigs = mysqlService.loadAllConstraintConfigs();
+            if (constraintConfigs.isEmpty()) {
+                constraintConfigs = getDefaultConstraintConfigs();
+            }
+            
+            // Allow dynamic overrides from JSON payload for testing
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> activeOverrides = (List<Map<String, Object>>) input.get("active_constraints");
+            if (activeOverrides != null) {
+                // If the user provided active_constraints, disable all constraints by default
+                constraintConfigs.forEach(c -> c.setEnabled(false));
+                
+                for (Map<String, Object> override : activeOverrides) {
+                    String name = (String) override.get("name");
+                    String severity = (String) override.get("severity");
+                    Number value = (Number) override.get("value");
+                    
+                    constraintConfigs.stream()
+                        .filter(c -> c.getConstraintName().equals(name))
+                        .findFirst()
+                        .ifPresent(c -> {
+                            c.setEnabled(true);
+                            if (severity != null) c.setSeverity(severity);
+                            if (value != null) c.setParameterValue(value.doubleValue());
+                        });
+                }
+            }
+            
+            int breakAfterHours = 4; // Default fallback
+            ConstraintConfig breakConfig = constraintConfigs.stream()
+                    .filter(c -> c.getConstraintId() == 9)
+                    .findFirst().orElse(null);
+            if (breakConfig != null) {
+                if (breakConfig.getParameterValue() != null) {
+                    breakAfterHours = breakConfig.getParameterValue().intValue();
+                }
+                if (breakConfig.getParameterValue2() != null) {
+                    breakDurationMinutes = breakConfig.getParameterValue2().intValue();
+                }
+            }
+
+            boolean prioritizePermanent = Boolean.TRUE.equals(input.getOrDefault("prioritize_permanent", true));
+
+            if (shiftName == null || startDateStr == null || endDateStr == null ||
+                    startTime == null || endTime == null ||
+                    roles == null || roles.isEmpty() || existingUsers == null) {
+                return Response.status(400).entity(Map.of(
+                        "error", "Missing required fields",
+                        "required", Arrays.asList("shift_name", "start_date", "end_date", "start_time", "end_time", "roles", "existing_users")
+                )).build();
+            }
+
+            LocalDate startDate = LocalDate.parse(startDateStr);
+            LocalDate endDate = LocalDate.parse(endDateStr);
+
+            if (endDate.isBefore(startDate)) {
+                return Response.status(400).entity(Map.of("error", "End date must be after start date")).build();
+            }
+
+            // Working dates (Include all days)
+            List<LocalDate> workingDates = new ArrayList<>();
+            LocalDate current = startDate;
+            while (!current.isAfter(endDate)) {
+                workingDates.add(current);
+                current = current.plusDays(1);
+            }
+
+            LocalTime startLocalTime = LocalTime.parse(startTime);
+            LocalTime endLocalTime = LocalTime.parse(endTime);
+
+            // Shift duration
+            double shiftDurationHours;
+            if (endLocalTime.isBefore(startLocalTime)) {
+                long minutesToMidnight = Duration.between(startLocalTime, LocalTime.MAX).toMinutes() + 1;
+                long minutesFromMidnight = Duration.between(LocalTime.MIN, endLocalTime).toMinutes();
+                shiftDurationHours = (minutesToMidnight + minutesFromMidnight) / 60.0;
+            } else {
+                shiftDurationHours = Duration.between(startLocalTime, endLocalTime).toMinutes() / 60.0;
+            }
+
+            // Break duration check removed per request
+
+            boolean overrideExisting = Boolean.TRUE.equals(input.get("overrideExisting"));
+
+            // ============ CREATE EMPLOYEE INFO WITH SKILLS ============
+            Map<String, EmployeeInfo> allEmployees = new HashMap<>();
+            Map<String, Double> employeeWages = new HashMap<>();
+            Map<String, Integer> employeeRatings = new HashMap<>();
+            Map<String, String> employeeRoles = new HashMap<>();
+            Map<String, String> employeeGenders = new HashMap<>();
+            Map<String, String> employeeTypes = new HashMap<>();
+
+            int empCounter = 1;
+
+            for (Map<String, Object> user : existingUsers) {
+                String name = (String) user.get("name");
+                Number rateObj = (Number) user.get("rate");
+                String unit = (String) user.get("unit");
+                Object ratingObj = user.get("rating");
+                String role = (String) user.get("role");
+                String existingEmployeeId = (String) user.get("employee_id");
+                String gender = user.containsKey("gender") ? (String) user.get("gender") : "Male";
+                String employeeType = user.containsKey("employeeType") ? (String) user.get("employeeType") : "Permanent";
+
+                String employeeId;
+                if (existingEmployeeId != null && !existingEmployeeId.trim().isEmpty()) {
+                    employeeId = existingEmployeeId;
+                } else {
+                    EmployeeInfo existing = findExistingEmployee(name, role);
+                    employeeId = (existing != null) ? existing.getId() : "EMP" + String.format("%03d", empCounter++);
+                }
+
+                double hourlyWage = rateObj.doubleValue();
+                if ("day".equalsIgnoreCase(unit)) {
+                    hourlyWage = hourlyWage / 8.0;
+                } else if ("month".equalsIgnoreCase(unit)) {
+                    hourlyWage = hourlyWage / (22.0 * 8.0);
+                }
+
+                int performanceRating = parseRating(ratingObj);
+                String email = name.toLowerCase().replace(" ", ".") + "@company.com";
+                String phone = "+91 9" + String.format("%09d", empCounter * 1234567);
+
+                employeeWages.put(employeeId, hourlyWage);
+                employeeRatings.put(employeeId, performanceRating);
+                employeeRoles.put(employeeId, role);
+                employeeGenders.put(employeeId, gender);
+                employeeTypes.put(employeeId, employeeType);
+
+                double finalHourlyWage = hourlyWage;
+                EmployeeInfo empInfo = employeeInfo.computeIfAbsent(employeeId, k ->
+                        new EmployeeInfo(employeeId, name, employeeType, gender, finalHourlyWage,
+                                "MGR001", "Operations", role, email, phone)
+                );
+
+                empInfo.setPerformanceRating(performanceRating);
+                empInfo.setPosition(role);
+                empInfo.setHourlyWage(hourlyWage);
+                empInfo.setGender(gender);
+                empInfo.setEmployeeType(employeeType);
+                empInfo.setName(name);
+                empInfo.setDepartment("Operations");
+                empInfo.setCategory(employeeType);
+
+                // V2: No automatic skill generation per user request.
+                // Skills must be passed explicitly in JSON.
+                @SuppressWarnings("unchecked")
+                List<String> skillsList = (List<String>) user.get("skills");
+                if (skillsList != null && !skillsList.isEmpty()) {
+                    empInfo.getSkills().clear();
+                    empInfo.getSkills().addAll(skillsList);
+                }
+
+                allEmployees.put(employeeId, empInfo);
+                System.out.println("👤 Employee: " + name + " (" + employeeId + ") - Skills: " + empInfo.getSkills());
+            }
+
+            // ============ CREATE ROLE LIMITS, RATINGS, AND REQUIRED SKILLS ============
+            List<Scheduler.ShiftSchedule.RoleLimit> roleLimits = new ArrayList<>();
+            List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements = new ArrayList<>();
+            Map<String, List<String>> requiredSkillsMap = new HashMap<>();
+
+            for (Map<String, Object> roleSpec : roles) {
+                String roleName = (String) roleSpec.get("role_name");
+                Object ratingObj = roleSpec.get("rating");
+                Number maxWorkersObj = (Number) roleSpec.get("max_workers");
+
+                roleLimits.add(new Scheduler.ShiftSchedule.RoleLimit(roleName, maxWorkersObj.intValue()));
+
+                List<Integer> allowedRatings = new ArrayList<>();
+                if (ratingObj instanceof Number) {
+                    int min = ((Number) ratingObj).intValue();
+                    for (int r = min; r <= 5; r++) allowedRatings.add(r);
+                } else if (ratingObj instanceof String) {
+                    String s = ((String) ratingObj).toLowerCase();
+                    if (s.contains("any") || s.contains("all")) {
+                        for (int r = 1; r <= 5; r++) allowedRatings.add(r);
+                    } else {
+                        try { int min = Integer.parseInt(s); for (int r = min; r <= 5; r++) allowedRatings.add(r); }
+                        catch (NumberFormatException e) { for (int r = 1; r <= 5; r++) allowedRatings.add(r); }
+                    }
+                } else {
+                    for (int r = 1; r <= 5; r++) allowedRatings.add(r);
+                }
+                ratingRequirements.add(new Scheduler.ShiftSchedule.RatingRequirement(roleName, allowedRatings));
+
+                // V2: Parse required_skills if passed
+                @SuppressWarnings("unchecked")
+                List<String> reqSkills = (List<String>) roleSpec.get("required_skills");
+                if (reqSkills != null && !reqSkills.isEmpty()) {
+                    requiredSkillsMap.put(roleName, reqSkills);
+                }
+            }
+
+            // ============ BUILD PLANNING ENTITIES ============
+            List<Scheduler.EmployeeAssignment> planningEntities = new ArrayList<>();
+            int skippedCount = 0;
+            int totalPossibleAssignments = 0;
+            Map<String, List<String>> skippedPerDate = new HashMap<>();
+            Map<String, Set<String>> availableEmployeesPerDate = new HashMap<>();
+
+            for (LocalDate date : workingDates) {
+                String dateStr = date.toString();
+                List<String> skippedOnThisDate = new ArrayList<>();
+
+                for (Map.Entry<String, EmployeeInfo> entry : allEmployees.entrySet()) {
+                    String empId = entry.getKey();
+                    EmployeeInfo emp = entry.getValue();
+                    totalPossibleAssignments++;
+
+                    // Skip if role not requested
+                    String position = emp.getPosition();
+                    boolean roleRequested = roleLimits.stream().anyMatch(rl -> rl.getRoleName().equals(position));
+                    if (!roleRequested) {
+                        skippedOnThisDate.add(emp.getName() + " - Role '" + position + "' is not requested");
+                        skippedCount++;
+                        continue;
+                    }
+
+                    // Existing assignment check and Female night shift check removed.
+                    // We let the solver handle overlapping shifts and timeslots via constraints.
+
+                    availableEmployeesPerDate.computeIfAbsent(dateStr, k -> new HashSet<>()).add(empId);
+
+                    Scheduler.EmployeeAssignment entity = new Scheduler.EmployeeAssignment(
+                            empId + "_" + dateStr, empId, emp.getName(), dateStr,
+                            emp.getCategory(), emp.getGender(), emp.getDepartment(), emp.getPosition()
+                    );
+                    System.out.println("DEBUG EMP: " + emp.getName() + " rating in emp: " + emp.getPerformanceRating());
+                    entity.setHourlyWage(emp.getHourlyWage());
+                    entity.setPerformanceRating(emp.getPerformanceRating());
+                    System.out.println("DEBUG ENTITY: " + entity.getEmployeeId() + " rating in entity: " + entity.getPerformanceRating());
+                    entity.setShiftStartStr(startTime);
+                    entity.setShiftStartTimeObj(startLocalTime);
+                    entity.setShiftEndStr(endTime);
+                    entity.setShiftDurationHours(shiftDurationHours);
+                    entity.setIsoWeekNum(date.get(java.time.temporal.WeekFields.ISO.weekOfYear()));
+                    entity.setLocalDateObj(date);
+                    
+                    List<String> required = requiredSkillsMap.getOrDefault(emp.getPosition(), List.of());
+                    Set<String> empSkills = emp.getSkills() != null ? emp.getSkills() : Set.of();
+                    long missing = required.stream().filter(reqSkill -> {
+                        if (reqSkill == null) return false;
+                        String normalizedReq = reqSkill.trim().toLowerCase();
+                        return empSkills.stream()
+                                .filter(s -> s != null)
+                                .map(s -> s.trim().toLowerCase())
+                                .noneMatch(normalizedReq::equals);
+                    }).count();
+                    entity.setMissingSkillCount(missing);
+                    
+                    entity.setSkills(emp.getSkills());
+                    entity.setEmployeeType(emp.getEmployeeType());
+                    entity.setPrioritizePermanent(prioritizePermanent);
+                    entity.setPermanentEmployee("Permanent".equalsIgnoreCase(emp.getEmployeeType()));
+                    entity.setRequestedShift(shiftName);
+
+                    // Break scheduling
+                    if (scheduleBreaks) {
+                        LocalTime breakStart = startLocalTime.plusHours(breakAfterHours);
+                        LocalTime breakEnd = breakStart.plusMinutes(breakDurationMinutes);
+                        entity.setBreakStartTime(breakStart);
+                        entity.setBreakEndTime(breakEnd);
+                        entity.setBreakDurationMinutes(breakDurationMinutes);
+                        entity.setHasScheduledBreak(true);
+                    }
+
+                    planningEntities.add(entity);
+                }
+
+                if (!skippedOnThisDate.isEmpty()) {
+                    skippedPerDate.put(dateStr, skippedOnThisDate);
+                }
+            }
+
+            // INJECT HISTORICAL PINNED ASSIGNMENTS FOR CONSTRAINTS (e.g. maxWeeklyHours, consecutiveShifts)
+            LocalDate historyStart = startDate.minusDays(7);
+            LocalDate historyEnd = endDate.plusDays(7);
+            for (LocalDate d = historyStart; !d.isAfter(historyEnd); d = d.plusDays(1)) {
+                // Fix #1b: Differentiate manual pins from auto-solver history.
+                // For dates inside the active planning window, ONLY inject manual assignments.
+                // For dates outside, inject all assignments (auto + manual) to provide historical context.
+                boolean inActiveWindow = !d.isBefore(startDate) && !d.isAfter(endDate);
+                String dStr = d.toString();
+                
+                Map<String, List<String>> pastAssignments;
+                if (inActiveWindow) {
+                    pastAssignments = manualAssignments.get(dStr);
+                } else {
+                    pastAssignments = shiftAssignments.get(dStr);
+                }
+                if (pastAssignments == null) continue;
+                
+                for (Map.Entry<String, List<String>> shiftEntry : pastAssignments.entrySet()) {
+                    String sName = shiftEntry.getKey();
+                    for (String eId : shiftEntry.getValue()) {
+                        if (!allEmployees.containsKey(eId)) continue; // Only pin employees relevant to this request
+                        
+                        EmployeeInfo emp = allEmployees.get(eId);
+                        Scheduler.EmployeeAssignment pinnedEntity = new Scheduler.EmployeeAssignment(
+                                eId + "_pinned_" + dStr, eId, emp.getName(), dStr,
+                                emp.getCategory(), emp.getGender(), emp.getDepartment(), emp.getPosition()
+                        );
+                        pinnedEntity.setShift(sName);
+                        pinnedEntity.setPinned(true);
+                        pinnedEntity.setShiftStartStr(startTime);
+                        pinnedEntity.setShiftStartTimeObj(startLocalTime);
+                        pinnedEntity.setShiftEndStr(endTime);
+                        
+                        // Propagate real employee fields to avoid triggering false positive constraints
+                        pinnedEntity.setHourlyWage(emp.getHourlyWage());
+                        pinnedEntity.setPerformanceRating(emp.getPerformanceRating());
+                        pinnedEntity.setSkills(emp.getSkills());
+                        pinnedEntity.setEmployeeType(emp.getEmployeeType());
+                        pinnedEntity.setPermanentEmployee("Permanent".equalsIgnoreCase(emp.getEmployeeType()));
+                        pinnedEntity.setPrioritizePermanent(prioritizePermanent);
+                        
+                        pinnedEntity.setShiftDurationHours(shiftDurationHours);
+                        pinnedEntity.setIsoWeekNum(d.get(java.time.temporal.WeekFields.ISO.weekOfYear()));
+                        pinnedEntity.setLocalDateObj(d);
+                        if (sName.equals(shiftName)) {
+                            pinnedEntity.setRequestedShift(shiftName);
+                        }
+                        planningEntities.add(pinnedEntity);
+                    }
+                }
+            }
+
+            System.out.println("\n📊 V2 Planning summary:");
+            System.out.println("   Total possible: " + totalPossibleAssignments);
+            System.out.println("   Entities to plan: " + planningEntities.size());
+            System.out.println("   Skipped: " + skippedCount);
+
+            if (!overrideExisting && planningEntities.isEmpty()) {
+                return Response.status(Response.Status.CONFLICT).entity(Map.of(
+                        "status", "error",
+                        "message", "No employees available for assignment",
+                        "skipped_count", skippedCount,
+                        "skipped_by_date", skippedPerDate
+                )).build();
+            }
+
+            // ============ CONFIGURE AND RUN V2 SOLVER ============
+            List<String> possibleShifts = Arrays.asList(shiftName);
+
+            // constraintConfigs already loaded at the top of the method
+
+
+            ShiftConstraintsV2.setConfiguration(roleLimits, ratingRequirements, requiredSkillsMap, constraintConfigs);
+
+            ShiftScheduleV2 problem = new ShiftScheduleV2(planningEntities, possibleShifts, roleLimits, ratingRequirements);
+            problem.setRequestedShiftName(shiftName);
+            problem.setPrioritizePermanent(prioritizePermanent);
+
+            long timeLimit = input.containsKey("time_limit_seconds") ? ((Number) input.get("time_limit_seconds")).longValue() : 60L;
+            long unimprovedLimit = input.containsKey("unimproved_time_limit_seconds") ? ((Number) input.get("unimproved_time_limit_seconds")).longValue() : 30L;
+
+            SolverConfig solverConfig = new SolverConfig()
+                    .withEnvironmentMode(ai.timefold.solver.core.config.solver.EnvironmentMode.FULL_ASSERT)
+                    .withSolutionClass(ShiftScheduleV2.class)
+                    .withEntityClasses(Scheduler.EmployeeAssignment.class)
+                    .withConstraintProviderClass(ShiftConstraintsV2.class)
+                    .withTerminationConfig(new ai.timefold.solver.core.config.solver.termination.TerminationConfig()
+                            .withSpentLimit(Duration.ofSeconds(timeLimit))
+                            .withUnimprovedSpentLimit(Duration.ofSeconds(unimprovedLimit)));
+
+            SolverFactory<ShiftScheduleV2> solverFactory = SolverFactory.create(solverConfig);
+            Solver<ShiftScheduleV2> solver = solverFactory.buildSolver();
+
+            System.out.println("🔧 Starting V2 solver...");
+            long solverStart = System.currentTimeMillis();
+            ShiftScheduleV2 solved = solver.solve(problem);
+            long solverTimeMs = System.currentTimeMillis() - solverStart;
+            System.out.println("✅ V2 Solver finished in " + solverTimeMs + "ms, score: " + solved.getScore());
+
+            ai.timefold.solver.core.api.score.ScoreManager<ShiftScheduleV2, HardMediumSoftLongScore> scoreManager = ai.timefold.solver.core.api.score.ScoreManager.create(solverFactory);
+            String scoreExplanation = scoreManager.explainScore(solved).getSummary();
+            System.out.println("Score Explanation:\n" + scoreExplanation);
+
+            // ============ PROCESS RESULTS ============
+            int assignedCount = 0;
+            Map<String, Map<String, List<String>>> newAssignments = new HashMap<>();
+            Map<String, List<Map<String, Object>>> assignmentDetails = new LinkedHashMap<>();
+            List<BreakSchedule> breakSchedules = new ArrayList<>();
+            Map<String, Set<String>> assignedEmployeesPerDate = new HashMap<>();
+
+            // Get OT threshold from constraint config
+            double otThreshold = constraintConfigs.stream()
+                    .filter(c -> c.getConstraintId() == 8)
+                    .findFirst()
+                    .map(c -> c.getParameterValue() != null ? c.getParameterValue() : 8.0)
+                    .orElse(8.0);
+
+            for (Scheduler.EmployeeAssignment ea : solved.getAssignments()) {
+                if (ea.isPinned()) continue; // Ignore pinned historical context entities
+                
+                String s = ea.getShift();
+                if (s == null) continue;
+
+                String d = ea.getDate();
+                String eid = ea.getEmployeeId();
+                EmployeeInfo emp = allEmployees.get(eid);
+                if (emp == null) continue;
+
+                if ("Night".equals(s) && "Female".equalsIgnoreCase(emp.getGender())) continue;
+
+                // Save to shiftAssignments
+                shiftAssignments.computeIfAbsent(d, k -> new HashMap<>())
+                        .computeIfAbsent(s, k -> new ArrayList<>())
+                        .add(eid);
+
+                // Save to shift times cache
+                employeeShiftTimesCache.computeIfAbsent(d, k -> new ConcurrentHashMap<>())
+                        .put(eid, new ShiftTimes(startTime, endTime));
+
+                // Generate break schedule
+                String breakStart = null;
+                String breakEnd = null;
+                String breakSlot = null;
+
+                if (scheduleBreaks) {
+                    Scheduler.ShiftTime shiftTimeObj = new Scheduler.ShiftTime(startLocalTime, endLocalTime);
+                    BreakSchedule bs = new BreakSchedule(eid, emp.getName(), d, s,
+                            shiftTimeObj.getStartTime(), shiftTimeObj.getEndTime());
+                    if (breakAfterHours != 4) {
+                        LocalTime customBreakStart = shiftTimeObj.getStartTime().plusHours(breakAfterHours);
+                        LocalTime customBreakEnd = customBreakStart.plusMinutes(breakDurationMinutes);
+                        bs.setBreakStartTime(customBreakStart);
+                        bs.setBreakEndTime(customBreakEnd);
+                    }
+                    breakSchedules.add(bs);
+                    breakStart = bs.getBreakStart();
+                    breakEnd = bs.getBreakEnd();
+                    breakSlot = bs.getFormattedBreakSlot();
+                }
+
+                // Sync to MySQL
+                mysqlService.syncAssignment(d, s, eid, ea.getEmployeeName(), ea.getPosition(),
+                        emp.getEmployeeType(), emp.getGender(), emp.getPerformanceRating(), startTime, endTime);
+
+                assignedEmployeesPerDate.computeIfAbsent(d, k -> new HashSet<>()).add(eid);
+
+                // Build assignment detail with OT hours
+                Map<String, Object> detail = new HashMap<>();
+                detail.put("employeeId", eid);
+                detail.put("employeeName", ea.getEmployeeName());
+                detail.put("role", emp.getPosition());
+                detail.put("rating", emp.getPerformanceRating());
+                detail.put("wage", emp.getHourlyWage());
+                detail.put("gender", emp.getGender());
+                detail.put("employeeType", emp.getEmployeeType());
+                detail.put("skills", emp.getSkills());
+
+                // V2: Add OT hours calculation
+                double actualHours = shiftDurationHours;
+                if (actualHours > otThreshold) {
+                    detail.put("regular_hours", otThreshold);
+                    detail.put("ot_hours", actualHours - otThreshold);
+                } else {
+                    detail.put("regular_hours", actualHours);
+                    detail.put("ot_hours", 0);
+                }
+
+                if (breakStart != null) {
+                    detail.put("break", Map.of(
+                            "breakStart", breakStart,
+                            "breakEnd", breakEnd,
+                            "breakDuration", breakDurationMinutes,
+                            "breakType", "MANDATORY",
+                            "breakSlot", breakSlot
+                    ));
+                }
+
+                assignmentDetails.computeIfAbsent(d, k -> new ArrayList<>()).add(detail);
+                assignedCount++;
+            }
+
+            // Save ONLY the explicitly provided JSON payload employees to the database
+            for (EmployeeInfo emp : allEmployees.values()) {
+                mysqlService.syncEmployee(
+                        emp.getId(),
+                        emp.getName(),
+                        emp.getPosition(),
+                        emp.getCategory(),
+                        emp.getGender(),
+                        emp.getHourlyWage(),
+                        emp.getPerformanceRating()
+                );
+            }
+
+            // ============ BUILD RESPONSE ============
+            Map<String, Object> response = new LinkedHashMap<>();
+            response.put("status", "success");
+            response.put("version", "v2");
+            response.put("shift_name", shiftName);
+            response.put("period", startDateStr + " to " + endDateStr);
+            response.put("shift_time", startTime + " - " + endTime);
+            response.put("shift_duration_hours", shiftDurationHours);
+            response.put("total_working_days", workingDates.size());
+            response.put("solver_score", solved.getScore().toString());
+            response.put("solver_time_seconds", solverTimeMs / 1000.0);
+            response.put("new_assignments_made", assignedCount);
+            response.put("entities_planned", planningEntities.size());
+            response.put("total_possible_assignments", totalPossibleAssignments);
+            response.put("skipped_count", skippedCount);
+            response.put("override_used", overrideExisting);
+            response.put("ot_threshold_hours", otThreshold);
+            response.put("prioritize_permanent", prioritizePermanent);
+
+            // Skill match info
+            if (!requiredSkillsMap.isEmpty()) {
+                response.put("required_skills_by_role", requiredSkillsMap);
+            }
+
+            // Active constraints info
+            List<Map<String, Object>> activeConstraints = new ArrayList<>();
+            for (ConstraintConfig cc : constraintConfigs) {
+                if (cc.isEnabled()) {
+                    Map<String, Object> cInfo = new LinkedHashMap<>();
+                    cInfo.put("name", cc.getConstraintName());
+                    cInfo.put("severity", cc.getSeverity());
+                    if (cc.getParameterValue() != null) cInfo.put("value", cc.getParameterValue());
+                    activeConstraints.add(cInfo);
+                }
+            }
+            response.put("active_constraints", activeConstraints);
+
+            response.put("breakSchedulesCount", breakSchedules.size());
+            response.put("breakConfiguration", Map.of(
+                    "scheduleBreaks", scheduleBreaks,
+                    "breakDurationMinutes", breakDurationMinutes,
+                    "breakAfterHours", breakAfterHours
+            ));
+
+            if (!skippedPerDate.isEmpty()) {
+                response.put("skipped_by_date", skippedPerDate);
+            }
+
+            // Assignment details grouped by date
+            response.put("assignments_by_date", assignmentDetails);
+            response.put("score_explanation", scoreExplanation);
+            response.put("message", "Successfully assigned shifts (V2 with dynamic constraints)!");
+
+            return Response.ok(response).build();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Response.status(500).entity(Map.of(
+                    "error", "V2 assignment failed: " + e.getMessage()
+            )).build();
+        }
+    }
+
 }
 
 
