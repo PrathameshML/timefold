@@ -1,0 +1,31 @@
+﻿{
+    "roles":  [
+                  {
+                      "required_skills":  [
+                                              "grill"
+                                          ],
+                      "rating":  1,
+                      "max_workers":  2,
+                      "role_name":  "Cook"
+                  }
+              ],
+    "end_time":  "16:00",
+    "start_date":  "2034-01-01",
+    "shift_name":  "Morning Shift",
+    "end_date":  "2034-01-01",
+    "existing_users":  [
+                           {
+                               "rating":  3,
+                               "employeeType":  "Permanent",
+                               "unit":  "hour",
+                               "name":  "OnlyOneGuy",
+                               "rate":  10,
+                               "employee_id":  "s2_e1",
+                               "role":  "Cook",
+                               "skills":  [
+                                              "grill"
+                                          ]
+                           }
+                       ],
+    "start_time":  "08:00"
+}

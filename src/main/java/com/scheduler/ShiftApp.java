@@ -155,9 +155,9 @@ public class ShiftApp {
         System.out.println("✅ System ready. Use GET /shifts to view assignments.");
 
         // Load constraint configs from MySQL
-        constraintConfigs = mysqlService.loadAllConstraintConfigs();
-        if (constraintConfigs.isEmpty()) {
-            constraintConfigs = getDefaultConstraintConfigs();
+        List<ConstraintConfig> localConstraintConfigs = mysqlService.loadAllConstraintConfigs();
+        if (localConstraintConfigs.isEmpty()) {
+            localConstraintConfigs = getDefaultConstraintConfigs();
             mysqlService.insertDefaultConstraints(constraintConfigs);
             System.out.println("📋 Inserted 11 default constraint configs");
         } else {
@@ -3499,7 +3499,7 @@ public class ShiftApp {
             response.put("message", message);
 
             System.out.println("✅ Clock-in successful for " + employeeId);
-            return Response.ok(response).build();
+                        return Response.ok(response).build();
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -10834,10 +10834,15 @@ public class ShiftApp {
     // ============ ShiftConstraintsV2 — Dynamic Constraint Provider ============
     public static class ShiftConstraintsV2 implements ConstraintProvider {
 
-        private static Map<String, Integer> maxWorkersPerRole = new HashMap<>();
-        private static Map<String, List<Integer>> requiredRatingsPerRole = new HashMap<>();
-        private static Map<String, List<String>> requiredSkillsPerRole = new HashMap<>();
-        private static List<ConstraintConfig> activeConstraintConfigs = new ArrayList<>();
+        private static class Context {
+            Map<String, Integer> maxWorkersPerRole = new HashMap<>();
+            Map<String, List<Integer>> requiredRatingsPerRole = new HashMap<>();
+            Map<String, List<String>> requiredSkillsPerRole = new HashMap<>();
+            List<ConstraintConfig> activeConstraintConfigs = new ArrayList<>();
+            double averageWage = 1.0;
+        }
+
+        private static final ThreadLocal<Context> threadContext = ThreadLocal.withInitial(Context::new);
 
         public ShiftConstraintsV2() {}
 
@@ -10845,27 +10850,34 @@ public class ShiftApp {
                 List<Scheduler.ShiftSchedule.RoleLimit> roleLimits,
                 List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements,
                 Map<String, List<String>> skillsMap,
-                List<ConstraintConfig> configs) {
+                List<ConstraintConfig> configs,
+                double avgWage) {
 
-            maxWorkersPerRole.clear();
-            requiredRatingsPerRole.clear();
-            requiredSkillsPerRole = skillsMap != null ? new HashMap<>(skillsMap) : new HashMap<>();
-            activeConstraintConfigs = configs != null ? new ArrayList<>(configs) : new ArrayList<>();
+            Context ctx = threadContext.get();
+            ctx.maxWorkersPerRole.clear();
+            ctx.requiredRatingsPerRole.clear();
+            ctx.requiredSkillsPerRole = skillsMap != null ? new HashMap<>(skillsMap) : new HashMap<>();
+            ctx.activeConstraintConfigs = configs != null ? new ArrayList<>(configs) : new ArrayList<>();
+            ctx.averageWage = avgWage > 0 ? avgWage : 1.0;
 
             for (Scheduler.ShiftSchedule.RoleLimit l : roleLimits) {
-                maxWorkersPerRole.put(l.getRoleName(), l.getMaxWorkers());
+                ctx.maxWorkersPerRole.put(l.getRoleName(), l.getMaxWorkers());
             }
             for (Scheduler.ShiftSchedule.RatingRequirement r : ratingRequirements) {
-                requiredRatingsPerRole.put(r.getRoleName(), r.getAllowedRatings());
+                ctx.requiredRatingsPerRole.put(r.getRoleName(), r.getAllowedRatings());
             }
 
-            System.out.println("✅ ShiftConstraintsV2 configured: " +
-                    maxWorkersPerRole.size() + " role limits, " +
-                    requiredSkillsPerRole.size() + " skill requirements, " +
-                    activeConstraintConfigs.size() + " constraint configs");
+            System.out.println("✅ ShiftConstraintsV2 configured on thread " + Thread.currentThread().getName() + ": " +
+                    ctx.maxWorkersPerRole.size() + " role limits, " +
+                    ctx.requiredSkillsPerRole.size() + " skill requirements, " +
+                    ctx.activeConstraintConfigs.size() + " constraint configs");
         }
 
-        private HardMediumSoftLongScore getScoreForSeverity(String severity) {
+        public static void clearConfiguration() {
+            threadContext.remove();
+        }
+
+        private HardMediumSoftLongScore resolveScore(String constraintName, String severity) {
             return switch (severity.toUpperCase()) {
                 case "HARD" -> HardMediumSoftLongScore.ONE_HARD;
                 case "MEDIUM" -> HardMediumSoftLongScore.ONE_MEDIUM;
@@ -10874,74 +10886,72 @@ public class ShiftApp {
             };
         }
 
-        private Constraint buildConstraint(ConstraintFactory factory, ConstraintConfig config) {
-            return switch (config.getConstraintId()) {
-                case 1 -> buildSkillMatch(factory, config);
-                case 2 -> buildNoOverlap(factory, config);
-                case 3 -> buildUnavailableTimeslot(factory, config);
-                case 4 -> buildEveryShiftPlanned(factory, config);
-                case 5 -> buildWageOptimization(factory, config);
-                case 6 -> buildMaxDailyHours(factory, config);
-                case 7 -> buildMaxWeeklyHours(factory, config);
-                case 8 -> buildOvertimeThreshold(factory, config);
-                case 9 -> buildBreakConstraint(factory, config);
-                case 10 -> buildConsecutiveShifts(factory, config);
-                case 11 -> buildPermanentPriority(factory, config);
-                default -> null;
-            };
+        private boolean isConstraintActive(String name, String severity, Object dummyFact) {
+            if (dummyFact == null) return false;
+            Context ctx = threadContext.get();
+            for (ConstraintConfig cc : ctx.activeConstraintConfigs) {
+                if (cc.isEnabled() && cc.getConstraintName().equals(name) && cc.getSeverity().equalsIgnoreCase(severity)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private double getConstraintParameter(String name, double defaultValue, Object dummyFact) {
+            if (dummyFact == null) return defaultValue;
+            Context ctx = threadContext.get();
+            for (ConstraintConfig cc : ctx.activeConstraintConfigs) {
+                if (cc.isEnabled() && cc.getConstraintName().equals(name) && cc.getParameterValue() != null) {
+                    return cc.getParameterValue();
+                }
+            }
+            return defaultValue;
         }
 
         // Constraint #1: Skill Match (percentage-based)
-        private Constraint buildSkillMatch(ConstraintFactory factory, ConstraintConfig config) {
-            double matchPercentage = config.getParameterValue() != null ? config.getParameterValue() : 100.0;
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
-
+        private Constraint buildSkillMatch(ConstraintFactory factory, String severity) {
             return factory.forEach(Scheduler.EmployeeAssignment.class)
                     .filter(a -> a.getShift() != null)
+                    .filter(a -> isConstraintActive("skillMatch", severity, a))
                     .filter(a -> {
-                        List<String> required = requiredSkillsPerRole.getOrDefault(a.getPosition(), List.of());
+                        double matchPercentage = getConstraintParameter("skillMatch", 100.0, a);
+                        List<String> required = threadContext.get().requiredSkillsPerRole.getOrDefault(a.getPosition(), List.of());
                         if (required.isEmpty()) return false;
                         long matchedCount = required.size() - a.getMissingSkillCount();
                         double actualPct = (matchedCount * 100.0) / required.size();
                         return actualPct < matchPercentage;
                     })
-                    .penalizeLong(penalty, a -> a.getMissingSkillCount() * 2000L)
-                    .asConstraint("skillMatch");
+                    .penalizeLong(resolveScore("skillMatch", severity),
+                            a -> (long) a.getMissingSkillCount())
+                    .asConstraint("skillMatch_" + severity);
         }
 
-        // Constraint #2: No Overlapping Shifts (one shift per employee per day)
-        private Constraint buildNoOverlap(ConstraintFactory factory, ConstraintConfig config) {
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+        // Constraint #2: No Overlapping Shifts
+        private Constraint buildNoOverlappingShifts(ConstraintFactory factory, String severity) {
             return factory.forEachUniquePair(Scheduler.EmployeeAssignment.class,
                             Joiners.equal(Scheduler.EmployeeAssignment::getEmployeeId),
                             Joiners.equal(Scheduler.EmployeeAssignment::getDate))
                     .filter((a1, a2) -> a1.getShift() != null && a2.getShift() != null)
-                    .penalizeLong(penalty, (a1, a2) -> 3000L)
-                    .asConstraint("noOverlappingShifts");
+                    .filter((a1, a2) -> isConstraintActive("noOverlappingShifts", severity, a1))
+                    .penalize(resolveScore("noOverlappingShifts", severity))
+                    .asConstraint("noOverlappingShifts_" + severity);
         }
 
-        // Constraint #3: Rating Mismatch (formerly Unavailable Timeslot)
-        private Constraint buildUnavailableTimeslot(ConstraintFactory factory, ConstraintConfig config) {
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
-
-            // Rating requirement matching
+        // Constraint #3: Unavailable Timeslots / Rating Mismatch
+        private Constraint buildUnavailableTimeslotOrRatingMismatch(ConstraintFactory factory, String severity) {
             return factory.forEach(Scheduler.EmployeeAssignment.class)
                     .filter(a -> a.getShift() != null)
+                    .filter(a -> isConstraintActive("unavailableTimeslot", severity, a))
                     .filter(a -> {
-                        List<Integer> allowed = requiredRatingsPerRole.getOrDefault(a.getPosition(), List.of(1, 2, 3, 4, 5));
-                        boolean fails = !allowed.contains(a.getPerformanceRating());
-                        if (fails) {
-                            System.out.println("❌ RATING MISMATCH: emp=" + a.getEmployeeId() + " pos=" + a.getPosition() + " rating=" + a.getPerformanceRating() + " allowed=" + allowed);
-                        }
-                        return fails;
+                        List<Integer> allowed = threadContext.get().requiredRatingsPerRole.getOrDefault(a.getPosition(), List.of(1, 2, 3, 4, 5));
+                        return !allowed.contains(a.getPerformanceRating());
                     })
-                    .penalizeLong(penalty, a -> 3000L)
-                    .asConstraint("unavailableTimeslot_ratingMismatch");
+                    .penalize(resolveScore("unavailableTimeslot", severity))
+                    .asConstraint("unavailableTimeslot_ratingMismatch_" + severity);
         }
 
-        // Constraint #4: Every Shift Planned (assign up to max_workers per role)
-        private Constraint buildEveryShiftPlanned(ConstraintFactory factory, ConstraintConfig config) {
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+        // Constraint #4: Every Shift Planned (Required Roles Fulfilled)
+        private Constraint buildEveryShiftPlanned(ConstraintFactory factory, String severity) {
             return factory.forEachIncludingNullVars(Scheduler.EmployeeAssignment.class)
                     .filter(a -> a.getRequestedShift() != null)
                     .groupBy(
@@ -10951,108 +10961,133 @@ public class ShiftApp {
                     .join(Scheduler.ShiftSchedule.RoleLimit.class,
                             Joiners.equal((date, position, count) -> position,
                                     Scheduler.ShiftSchedule.RoleLimit::getRoleName))
+                    .filter((date, position, count, roleLimit) -> isConstraintActive("everyShiftPlanned", severity, roleLimit))
                     .filter((date, position, count, roleLimit) -> count < roleLimit.getMaxWorkers())
-                    .penalizeLong(penalty,
-                            (date, position, count, roleLimit) -> (long) ((roleLimit.getMaxWorkers() - count) * 3000L))
-                    .asConstraint("everyShiftPlanned");
+                    .penalizeLong(resolveScore("everyShiftPlanned", severity),
+                            (date, position, count, roleLimit) -> (long) (roleLimit.getMaxWorkers() - count))
+                    .asConstraint("everyShiftPlanned_" + severity);
         }
 
-        // Constraint #5: Wage Optimization (prefer lower wage)
-        private Constraint buildWageOptimization(ConstraintFactory factory, ConstraintConfig config) {
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+        // Constraint #5: Wage Optimization (Minimize Costs)
+        private Constraint buildWageOptimization(ConstraintFactory factory, String severity) {
             return factory.forEach(Scheduler.EmployeeAssignment.class)
                     .filter(a -> a.getShift() != null)
-                    .penalizeLong(penalty, a -> (long) (a.getHourlyWage() * a.getShiftDurationHours()))
-                    .asConstraint("wageOptimization");
+                    .filter(a -> isConstraintActive("wageOptimization", severity, a))
+                    .penalizeLong(resolveScore("wageOptimization", severity),
+                            a -> {
+                                double wageRatio = a.getHourlyWage() / threadContext.get().averageWage;
+                                return (long) (wageRatio * 1000.0 * a.getShiftDurationHours());
+                            })
+                    .asConstraint("wageOptimization_" + severity);
         }
 
         // Constraint #6: Max Daily Hours
-        private Constraint buildMaxDailyHours(ConstraintFactory factory, ConstraintConfig config) {
-            double maxHours = config.getParameterValue() != null ? config.getParameterValue() : 8.0;
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+        private Constraint buildMaxDailyHours(ConstraintFactory factory, String severity) {
             return factory.forEach(Scheduler.EmployeeAssignment.class)
                     .filter(a -> a.getShift() != null)
-                    .filter(a -> a.getShiftDurationHours() > maxHours)
-                    .penalizeLong(penalty, a -> (long) ((a.getShiftDurationHours() - maxHours) * 60 * 100L))
-                    .asConstraint("maxDailyHours");
+                    .filter(a -> isConstraintActive("maxDailyHours", severity, a))
+                    .filter(a -> a.getShiftDurationHours() > getConstraintParameter("maxDailyHours", 8.0, a))
+                    .penalizeLong(resolveScore("maxDailyHours", severity),
+                            a -> {
+                                double maxHours = getConstraintParameter("maxDailyHours", 8.0, a);
+                                return (long) Math.ceil(a.getShiftDurationHours() - maxHours);
+                            })
+                    .asConstraint("maxDailyHours_" + severity);
         }
 
         // Constraint #7: Max Weekly Hours
-        private Constraint buildMaxWeeklyHours(ConstraintFactory factory, ConstraintConfig config) {
-            double maxWeeklyHours = config.getParameterValue() != null ? config.getParameterValue() : 40.0;
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+        private Constraint buildMaxWeeklyHours(ConstraintFactory factory, String severity) {
             return factory.forEach(Scheduler.EmployeeAssignment.class)
                     .filter(a -> a.getShift() != null)
-                    .groupBy(Scheduler.EmployeeAssignment::getEmployeeId, Scheduler.EmployeeAssignment::getIsoWeekNum, ConstraintCollectors.sumLong(a -> (long)(a.getShiftDurationHours() * 60)))
-                    .filter((empId, weekNum, totalMinutes) -> totalMinutes > maxWeeklyHours * 60)
-                    .penalizeLong(penalty, (empId, weekNum, totalMinutes) -> (long) ((totalMinutes - (maxWeeklyHours * 60)) * 100L))
-                    .asConstraint("maxWeeklyHours");
+                    .filter(a -> isConstraintActive("maxWeeklyHours", severity, a))
+                    .groupBy(Scheduler.EmployeeAssignment::getEmployeeId,
+                            Scheduler.EmployeeAssignment::getIsoWeekNum,
+                            ConstraintCollectors.sumLong(a -> (long) (a.getShiftDurationHours() * 60)))
+                    .filter((empId, weekNum, totalMinutes) -> totalMinutes > getConstraintParameter("maxWeeklyHours", 40.0, empId) * 60)
+                    .penalizeLong(resolveScore("maxWeeklyHours", severity),
+                            (empId, weekNum, totalMinutes) -> {
+                                double maxWeeklyHours = getConstraintParameter("maxWeeklyHours", 40.0, empId);
+                                long extraMinutes = totalMinutes - (long)(maxWeeklyHours * 60);
+                                return extraMinutes / 60;
+                            })
+                    .asConstraint("maxWeeklyHours_" + severity);
         }
 
         // Constraint #8: Overtime Threshold
-        private Constraint buildOvertimeThreshold(ConstraintFactory factory, ConstraintConfig config) {
-            double threshold = config.getParameterValue() != null ? config.getParameterValue() : 8.0;
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+        private Constraint buildOvertimeThreshold(ConstraintFactory factory, String severity) {
             return factory.forEach(Scheduler.EmployeeAssignment.class)
                     .filter(a -> a.getShift() != null)
-                    .filter(a -> a.getShiftDurationHours() > threshold)
-                    .penalizeLong(penalty, a -> (long) ((a.getShiftDurationHours() - threshold) * 200L))
-                    .asConstraint("overtimeThreshold");
+                    .filter(a -> isConstraintActive("overtimeThreshold", severity, a))
+                    .filter(a -> a.getShiftDurationHours() > getConstraintParameter("overtimeThreshold", 8.0, a))
+                    .penalizeLong(resolveScore("overtimeThreshold", severity),
+                            a -> {
+                                double threshold = getConstraintParameter("overtimeThreshold", 8.0, a);
+                                return (long) Math.ceil(a.getShiftDurationHours() - threshold);
+                            })
+                    .asConstraint("overtimeThreshold_" + severity);
         }
 
         // Constraint #9: Break After Hours
-        private Constraint buildBreakConstraint(ConstraintFactory factory, ConstraintConfig config) {
-            double maxHours = config.getParameterValue() != null ? config.getParameterValue() : 4.0;
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+        private Constraint buildBreakAfterHours(ConstraintFactory factory, String severity) {
             return factory.forEach(Scheduler.EmployeeAssignment.class)
-                    .filter(a -> a.getShift() != null && a.isHasScheduledBreak() && a.getBreakStartTime() != null && a.getShiftStartTimeObj() != null)
+                    .filter(a -> a.getShift() != null)
+                    .filter(a -> isConstraintActive("breakAfterHours", severity, a))
                     .filter(a -> {
-                        long workBeforeBreak = java.time.Duration.between(a.getShiftStartTimeObj(), a.getBreakStartTime()).toMinutes();
-                        return workBeforeBreak > maxHours * 60;
+                        double maxHours = getConstraintParameter("breakAfterHours", 4.0, a);
+                        return a.getShiftDurationHours() > maxHours && !a.isHasScheduledBreak();
                     })
-                    .penalizeLong(penalty, a -> {
-                        long workBeforeBreak = java.time.Duration.between(a.getShiftStartTimeObj(), a.getBreakStartTime()).toMinutes();
-                        return (long) ((workBeforeBreak - (maxHours * 60)) * 100L);
-                    })
-                    .asConstraint("breakAfterHours");
+                    .penalizeLong(resolveScore("breakAfterHours", severity),
+                            a -> {
+                                double maxHours = getConstraintParameter("breakAfterHours", 4.0, a);
+                                return (long) Math.ceil(a.getShiftDurationHours() - maxHours);
+                            })
+                    .asConstraint("breakAfterHours_" + severity);
         }
 
         // Constraint #10: Consecutive Shifts
-        private Constraint buildConsecutiveShifts(ConstraintFactory factory, ConstraintConfig config) {
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
-            // The goal is to penalize schedules that are NOT consecutive.
-            // If they work Monday and Wednesday (gap on Tuesday), we penalize.
+        private Constraint buildConsecutiveShifts(ConstraintFactory factory, String severity) {
             return factory.forEach(Scheduler.EmployeeAssignment.class)
                     .filter(a -> a.getShift() != null)
+                    .filter(a -> isConstraintActive("consecutiveShifts", severity, a))
                     .groupBy(Scheduler.EmployeeAssignment::getEmployeeId, ConstraintCollectors.toList())
-                    .penalizeLong(penalty, (employeeId, list) -> {
-                        if (list.size() <= 1) return 0L;
-                        
-                        // Sort by date
-                        list.sort(Comparator.comparing(Scheduler.EmployeeAssignment::getLocalDateObj));
-                        
-                        long totalGaps = 0;
-                        for (int i = 0; i < list.size() - 1; i++) {
-                            LocalDate current = list.get(i).getLocalDateObj();
-                            LocalDate next = list.get(i+1).getLocalDateObj();
-                            long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(current, next);
-                            if (daysBetween > 1) {
-                                totalGaps += (daysBetween - 1);
-                            }
-                        }
-                        return totalGaps * 50L;
-                    })
-                    .asConstraint("consecutiveShifts");
+                    .penalizeLong(resolveScore("consecutiveShifts", severity),
+                            (employeeId, list) -> {
+                                if (list.size() < 2) return 0L;
+                                List<Scheduler.EmployeeAssignment> sortedList = new ArrayList<>(list);
+                                sortedList.sort(Comparator.comparing(Scheduler.EmployeeAssignment::getLocalDateObj));
+                                long totalGaps = 0;
+                                for (int i = 0; i < sortedList.size() - 1; i++) {
+                                    long daysBetween = java.time.temporal.ChronoUnit.DAYS.between(sortedList.get(i).getLocalDateObj(), sortedList.get(i + 1).getLocalDateObj());
+                                    if (daysBetween > 1) {
+                                        totalGaps += (daysBetween - 1);
+                                    }
+                                }
+                                return totalGaps;
+                            })
+                    .asConstraint("consecutiveShifts_" + severity);
         }
 
-        // Constraint #11: Permanent Employee Priority
-        private Constraint buildPermanentPriority(ConstraintFactory factory, ConstraintConfig config) {
-            HardMediumSoftLongScore penalty = getScoreForSeverity(config.getSeverity());
+        // Constraint #11: Permanent Priority
+        private Constraint buildPermanentPriority(ConstraintFactory factory, String severity) {
+            return factory.forEach(Scheduler.EmployeeAssignment.class)
+                    .filter(a -> a.getShift() == null) // Unassigned employee
+                    .filter(a -> a.isPermanentEmployee())
+                    .filter(a -> isConstraintActive("permanentPriority", severity, a))
+                    .penalize(resolveScore("permanentPriority", severity))
+                    .asConstraint("permanentPriority_" + severity);
+        }
+
+        // Constraint #12: Maximize Rating
+        private Constraint buildMaximizeRating(ConstraintFactory factory, String severity) {
             return factory.forEach(Scheduler.EmployeeAssignment.class)
                     .filter(a -> a.getShift() != null)
-                    .filter(a -> !a.isPermanentEmployee())
-                    .penalizeLong(penalty, a -> a.isPrioritizePermanent() ? 100L : 0L)
-                    .asConstraint("permanentPriority");
+                    .filter(a -> isConstraintActive("maximizeRating", severity, a))
+                    .rewardLong(resolveScore("maximizeRating", severity),
+                            a -> {
+                                long multiplier = (long) getConstraintParameter("maximizeRating", 100.0, a);
+                                return a.getPerformanceRating() * multiplier;
+                            })
+                    .asConstraint("maximizeRating_" + severity);
         }
 
         // Also add max workers per role and rating mismatch as always-on constraints
@@ -11077,23 +11112,24 @@ public class ShiftApp {
                     .asConstraint("maxWorkersPerRolePerShift")
             );
 
-            // Always-on: Maximize Rating (Balanced Approach)
-            constraints.add(
-                factory.forEach(Scheduler.EmployeeAssignment.class)
-                    .filter(a -> a.getShift() != null)
-                    .rewardLong(HardMediumSoftLongScore.ONE_SOFT, 
-                            a -> (long) (a.getPerformanceRating() * a.getShiftDurationHours() * 2))
-                    .asConstraint("maximizeRating")
-            );
-
-            // Dynamic constraints from DB
-            for (ConstraintConfig config : activeConstraintConfigs) {
-                if (!config.isEnabled()) continue;
-                Constraint c = buildConstraint(factory, config);
-                if (c != null) constraints.add(c);
+            // Dynamic constraints for all severities
+            String[] severities = {"HARD", "MEDIUM", "SOFT"};
+            for (String sev : severities) {
+                constraints.add(buildSkillMatch(factory, sev));
+                constraints.add(buildNoOverlappingShifts(factory, sev));
+                constraints.add(buildUnavailableTimeslotOrRatingMismatch(factory, sev));
+                constraints.add(buildEveryShiftPlanned(factory, sev));
+                constraints.add(buildWageOptimization(factory, sev));
+                constraints.add(buildMaxDailyHours(factory, sev));
+                constraints.add(buildMaxWeeklyHours(factory, sev));
+                constraints.add(buildOvertimeThreshold(factory, sev));
+                constraints.add(buildBreakAfterHours(factory, sev));
+                constraints.add(buildConsecutiveShifts(factory, sev));
+                constraints.add(buildPermanentPriority(factory, sev));
+                constraints.add(buildMaximizeRating(factory, sev));
             }
 
-            System.out.println("📋 ShiftConstraintsV2: Built " + constraints.size() + " active constraints");
+            System.out.println("📋 ShiftConstraintsV2: Built " + constraints.size() + " total constraints (runtime evaluated)");
             return constraints.toArray(new Constraint[0]);
         }
 
@@ -11242,9 +11278,9 @@ public class ShiftApp {
             int breakDurationMinutes = 30; // Default fallback
             
             // Reload constraint configs from DB (fresh) to pull Break After Hours and Duration
-            constraintConfigs = mysqlService.loadAllConstraintConfigs();
-            if (constraintConfigs.isEmpty()) {
-                constraintConfigs = getDefaultConstraintConfigs();
+            List<ConstraintConfig> localConstraintConfigs = mysqlService.loadAllConstraintConfigs();
+            if (localConstraintConfigs.isEmpty()) {
+                localConstraintConfigs = getDefaultConstraintConfigs();
             }
             
             // Allow dynamic overrides from JSON payload for testing
@@ -11252,14 +11288,14 @@ public class ShiftApp {
             List<Map<String, Object>> activeOverrides = (List<Map<String, Object>>) input.get("active_constraints");
             if (activeOverrides != null) {
                 // If the user provided active_constraints, disable all constraints by default
-                constraintConfigs.forEach(c -> c.setEnabled(false));
+                localConstraintConfigs.forEach(c -> c.setEnabled(false));
                 
                 for (Map<String, Object> override : activeOverrides) {
                     String name = (String) override.get("name");
                     String severity = (String) override.get("severity");
                     Number value = (Number) override.get("value");
                     
-                    constraintConfigs.stream()
+                    localConstraintConfigs.stream()
                         .filter(c -> c.getConstraintName().equals(name))
                         .findFirst()
                         .ifPresent(c -> {
@@ -11271,7 +11307,7 @@ public class ShiftApp {
             }
             
             int breakAfterHours = 4; // Default fallback
-            ConstraintConfig breakConfig = constraintConfigs.stream()
+            ConstraintConfig breakConfig = localConstraintConfigs.stream()
                     .filter(c -> c.getConstraintId() == 9)
                     .findFirst().orElse(null);
             if (breakConfig != null) {
@@ -11589,8 +11625,12 @@ public class ShiftApp {
 
             // constraintConfigs already loaded at the top of the method
 
+            double averageWage = employeeWages.values().stream()
+                    .mapToDouble(Double::doubleValue)
+                    .average()
+                    .orElse(1.0);
 
-            ShiftConstraintsV2.setConfiguration(roleLimits, ratingRequirements, requiredSkillsMap, constraintConfigs);
+            ShiftConstraintsV2.setConfiguration(roleLimits, ratingRequirements, requiredSkillsMap, localConstraintConfigs, averageWage);
 
             ShiftScheduleV2 problem = new ShiftScheduleV2(planningEntities, possibleShifts, roleLimits, ratingRequirements);
             problem.setRequestedShiftName(shiftName);
@@ -11629,7 +11669,7 @@ public class ShiftApp {
             Map<String, Set<String>> assignedEmployeesPerDate = new HashMap<>();
 
             // Get OT threshold from constraint config
-            double otThreshold = constraintConfigs.stream()
+            double otThreshold = localConstraintConfigs.stream()
                     .filter(c -> c.getConstraintId() == 8)
                     .findFirst()
                     .map(c -> c.getParameterValue() != null ? c.getParameterValue() : 8.0)
@@ -11758,7 +11798,7 @@ public class ShiftApp {
 
             // Active constraints info
             List<Map<String, Object>> activeConstraints = new ArrayList<>();
-            for (ConstraintConfig cc : constraintConfigs) {
+            for (ConstraintConfig cc : localConstraintConfigs) {
                 if (cc.isEnabled()) {
                     Map<String, Object> cInfo = new LinkedHashMap<>();
                     cInfo.put("name", cc.getConstraintName());

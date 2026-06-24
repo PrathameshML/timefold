@@ -1,0 +1,44 @@
+{
+  "shift_name": "Morning",
+  "start_date": "2026-02-01",
+  "end_date": "2026-02-05",
+  "start_time": "08:00",
+  "end_time": "16:00",
+  "prioritizePermanent": false,
+  "schedule_breaks": false,
+  "config": [
+    {
+      "constraintId": 4,
+      "severity": "MEDIUM"
+    }
+  ],
+  "roles": [
+    {
+      "role_name": "CNC Operator",
+      "rating": 3,
+      "max_workers": 1
+    }
+  ],
+  "existing_users": [
+    {
+      "employee_id": "101",
+      "name": "Rajesh Kumar",
+      "rate": 15,
+      "unit": "hour",
+      "rating": 5,
+      "role": "CNC Operator",
+      "gender": "Male",
+      "employeeType": "Permanent"
+    },
+    {
+      "employee_id": "106",
+      "name": "Suresh Verma",
+      "rate": 14,
+      "unit": "hour",
+      "rating": 3,
+      "role": "CNC Operator",
+      "gender": "Male",
+      "employeeType": "Permanent"
+    }
+  ]
+}

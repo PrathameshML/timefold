@@ -1,0 +1,32 @@
+﻿{
+    "roles":  [
+                  {
+                      "required_skills":  [
+                                              "grill",
+                                              "prep"
+                                          ],
+                      "rating":  1,
+                      "max_workers":  1,
+                      "role_name":  "Cook"
+                  }
+              ],
+    "end_time":  "16:00",
+    "start_date":  "2031-01-01",
+    "shift_name":  "Morning Shift",
+    "end_date":  "2031-01-01",
+    "existing_users":  [
+                           {
+                               "rating":  3,
+                               "employeeType":  "Permanent",
+                               "unit":  "hour",
+                               "name":  "MissingSkillBob",
+                               "rate":  10,
+                               "employee_id":  "s1_e1",
+                               "role":  "Cook",
+                               "skills":  [
+                                              "grill"
+                                          ]
+                           }
+                       ],
+    "start_time":  "08:00"
+}

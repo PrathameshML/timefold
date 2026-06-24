@@ -1,0 +1,46 @@
+﻿{
+    "roles":  [
+                  {
+                      "required_skills":  [
+                                              "grill",
+                                              "prep"
+                                          ],
+                      "rating":  1,
+                      "max_workers":  1,
+                      "role_name":  "Cook"
+                  }
+              ],
+    "end_time":  "16:00",
+    "start_date":  "2032-01-01",
+    "shift_name":  "Morning Shift",
+    "end_date":  "2032-01-01",
+    "existing_users":  [
+                           {
+                               "rating":  5,
+                               "employeeType":  "Permanent",
+                               "unit":  "hour",
+                               "name":  "ExpensiveExpert",
+                               "rate":  50,
+                               "employee_id":  "s3_e1",
+                               "role":  "Cook",
+                               "skills":  [
+                                              "grill",
+                                              "prep"
+                                          ]
+                           },
+                           {
+                               "rating":  3,
+                               "employeeType":  "Permanent",
+                               "unit":  "hour",
+                               "name":  "CheapAverage",
+                               "rate":  10,
+                               "employee_id":  "s3_e2",
+                               "role":  "Cook",
+                               "skills":  [
+                                              "grill",
+                                              "prep"
+                                          ]
+                           }
+                       ],
+    "start_time":  "08:00"
+}

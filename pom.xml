@@ -29,7 +29,12 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
-        </dependencies>
+            <dependency>
+            <groupId>ai.timefold.solver</groupId>
+            <artifactId>timefold-solver-benchmark</artifactId>
+            <version>${timefold.version}</version>
+        </dependency>
+    </dependencies>
     </dependencyManagement>
 
     <dependencies>
@@ -65,6 +70,11 @@
             <groupId>io.quarkus</groupId>
             <artifactId>quarkus-agroal</artifactId>
             <version>3.15.1</version>
+        </dependency>
+        <dependency>
+            <groupId>ai.timefold.solver</groupId>
+            <artifactId>timefold-solver-benchmark</artifactId>
+            <version>${timefold.version}</version>
         </dependency>
     </dependencies>
 

@@ -1,0 +1,151 @@
+API’s For Time Fold 
+1)For assigning shift (Automatic):  
+​
+curl --location 'http://3.28.221.5:8083/shifts/assign' \ 
+--header 'Content-Type: application/json' \ 
+--data '{ 
+    "shift_name": "Morning", 
+    "start_date": "2026-01-19", 
+    "end_date": "2026-01-23", 
+    "start_time": "06:00", 
+    "end_time": "17:00", 
+    "prioritizePermanent": true, 
+    "schedule_breaks": true, 
+    "roles": [ 
+      { 
+        "role_name": "CNC Operator", 
+        "rating": 4, 
+        "max_workers": 2 
+      }, 
+      { 
+        "role_name": "Helper", 
+        "rating": 3, 
+        "max_workers": 4 
+      } 
+    ], 
+    "existing_users": [ 
+      { 
+        "employee_id": "101", 
+        "name": "Rajesh Kumar", 
+        "rate": 10.0, 
+        "unit": "hour", 
+        "rating": 5, 
+        "role": "CNC Operator", 
+        "gender": "Male", 
+        "employeeType": "Permanent" 
+      }, 
+      { 
+        "employee_id": "102", 
+        "name": "Priya Sharma", 
+        "rate": 8.0, 
+        "unit": "hour", 
+        "rating": 4, 
+        "role": "Helper", 
+        "gender": "Female", 
+        "employeeType": "Permanent" 
+      }, 
+      { 
+        "employee_id": "103", 
+        "name": "Amit Patel", 
+        "rate": 42.0, 
+        "unit": "hour", 
+        "rating": 5, 
+        "role": "CNC Operator", 
+        "gender": "Male", 
+        "employeeType": "Permanent" 
+      }, 
+            { 
+        "employee_id": "104", 
+        "name": "Radha Kumari", 
+        "rate": 16.0, 
+        "unit": "hour", 
+        "rating": 4, 
+        "role": "Helper", 
+        "gender": "Female", 
+        "employeeType": "Permanent" 
+      } 
+    ] 
+  }' 
+​
+2) For Assigning Shifts (Manual)​
+​
+curl --location 'http://3.28.221.5:8083/shifts/manual-assign' \ 
+--header 'Content-Type: application/json' \ 
+--data '{ 
+    "date": "2026-01-19", 
+    "shift": "Morning", 
+    "employees": [ 
+      { 
+        "employee_id": "101", 
+        "name": "Rajesh Kumar", 
+        "gender": "Male" 
+      }, 
+      { 
+        "employee_id": "102", 
+        "name": "Priya Sharma", 
+        "gender": "Female" 
+      } 
+    ] 
+  }'​
+​
+3) To access or GET the request for the shifts Assigned​
+​
+curl --location 'http://3.28.221.5:8083/shifts' \ 
+--header 'Content-Type: application/json' \ 
+--data ''​
+​
+4A) To remove all employees from specific and shift and specific date from the shifts given to            
+​
+   them 
+​
+curl --location --request DELETE 'http://3.28.221.5:8083/shifts/clear' \ 
+--header 'Content-Type: application/json' \ 
+--data ' { 
+  "day": "2026-01-19",  
+  "shift": "Morning" 
+}'​
+​
+4B) To remove specific employees from a shift and on specific date​
+ 
+curl --location --request DELETE 'http://3.28.221.5:8083/shifts/clear' \ 
+--header 'Content-Type: application/json' \ 
+--data ' { 
+  "day": "2026-01-19",  
+  "shift": "Morning", 
+  "employees": ["101", "102"] 
+}' 
+ 
+ 
+4C) To remove shift from multiple days 
+​
+curl -X DELETE http://3.28.221.5:8083/shifts/clear \ 
+  -H "Content-Type: application/json" \ 
+  -d '{ 
+    "days": ["2026-01-19", "2026-01-20", "2026-01-21"], 
+    "shifts": "Morning" 
+  }' 
+ 
+4D) To remove multiple shifts from multiple days 
+curl -X DELETE http://3.28.221.5:8083/shifts/clear \ 
+  -H "Content-Type: application/json" \ 
+  -d '{ 
+    "days": ["2026-01-19", "2026-01-20"], 
+    "shifts": ["Morning", "Afternoon"] 
+  }' 
+ 
+4E) To remove specific employees from multiple days/shifts​
+ 
+curl -X DELETE http://3.28.221.5:8083/shifts/clear \ 
+  -H "Content-Type: application/json" \ 
+  -d '{ 
+    "days": ["2026-01-19", "2026-01-20"], 
+    "shifts": ["Morning", "Afternoon"], 
+    "employees": ["101", "102", "103"] 
+  }' 
+ 
+ 
+5)To clear all the shifts from a week ​
+ 
+curl --location --request DELETE 'http://3.28.221.5:8083/shifts/clear-all' \ 
+--header 'Content-Type: application/json' \ 
+--data '' 

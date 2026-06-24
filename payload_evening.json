@@ -1,0 +1,340 @@
+{
+  "shift_name": "Evening Shift",
+  "start_date": "2035-05-01",
+  "end_date": "2035-05-07",
+  "start_time": "16:00",
+  "end_time": "23:59",
+  "prioritize_permanent": true,
+  "roles": [
+    {
+      "role_name": "Manager",
+      "rating": 4,
+      "max_workers": 1,
+      "required_skills": [
+        "management"
+      ]
+    },
+    {
+      "role_name": "Cook",
+      "rating": 3,
+      "max_workers": 3,
+      "required_skills": [
+        "grill",
+        "prep"
+      ]
+    },
+    {
+      "role_name": "Waiter",
+      "rating": 1,
+      "max_workers": 5,
+      "required_skills": [
+        "service"
+      ]
+    }
+  ],
+  "existing_users": [
+    {
+      "employee_id": "e1",
+      "name": "Manager 1",
+      "role": "Manager",
+      "rate": 50,
+      "unit": "hour",
+      "rating": 5,
+      "employeeType": "Permanent",
+      "skills": [
+        "management"
+      ]
+    },
+    {
+      "employee_id": "e2",
+      "name": "Manager 2",
+      "role": "Manager",
+      "rate": 50,
+      "unit": "hour",
+      "rating": 5,
+      "employeeType": "Permanent",
+      "skills": [
+        "management"
+      ]
+    },
+    {
+      "employee_id": "e3",
+      "name": "Manager 3",
+      "role": "Manager",
+      "rate": 50,
+      "unit": "hour",
+      "rating": 5,
+      "employeeType": "Permanent",
+      "skills": [
+        "management"
+      ]
+    },
+    {
+      "employee_id": "e4",
+      "name": "Manager 4",
+      "role": "Manager",
+      "rate": 50,
+      "unit": "hour",
+      "rating": 5,
+      "employeeType": "Permanent",
+      "skills": [
+        "management"
+      ]
+    },
+    {
+      "employee_id": "e5",
+      "name": "Manager 5",
+      "role": "Manager",
+      "rate": 50,
+      "unit": "hour",
+      "rating": 5,
+      "employeeType": "Permanent",
+      "skills": [
+        "management"
+      ]
+    },
+    {
+      "employee_id": "e6",
+      "name": "Cook 6",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 4,
+      "employeeType": "Contractor",
+      "skills": [
+        "grill",
+        "prep"
+      ]
+    },
+    {
+      "employee_id": "e7",
+      "name": "Cook 7",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 5,
+      "employeeType": "Permanent",
+      "skills": [
+        "grill"
+      ]
+    },
+    {
+      "employee_id": "e8",
+      "name": "Cook 8",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 2,
+      "employeeType": "Permanent",
+      "skills": [
+        "grill",
+        "prep"
+      ]
+    },
+    {
+      "employee_id": "e9",
+      "name": "Cook 9",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 3,
+      "employeeType": "Contractor",
+      "skills": [
+        "grill"
+      ]
+    },
+    {
+      "employee_id": "e10",
+      "name": "Cook 10",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 4,
+      "employeeType": "Permanent",
+      "skills": [
+        "grill",
+        "prep"
+      ]
+    },
+    {
+      "employee_id": "e11",
+      "name": "Cook 11",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 5,
+      "employeeType": "Permanent",
+      "skills": [
+        "grill"
+      ]
+    },
+    {
+      "employee_id": "e12",
+      "name": "Cook 12",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 2,
+      "employeeType": "Contractor",
+      "skills": [
+        "grill",
+        "prep"
+      ]
+    },
+    {
+      "employee_id": "e13",
+      "name": "Cook 13",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 3,
+      "employeeType": "Permanent",
+      "skills": [
+        "grill"
+      ]
+    },
+    {
+      "employee_id": "e14",
+      "name": "Cook 14",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 4,
+      "employeeType": "Permanent",
+      "skills": [
+        "grill",
+        "prep"
+      ]
+    },
+    {
+      "employee_id": "e15",
+      "name": "Cook 15",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 5,
+      "employeeType": "Contractor",
+      "skills": [
+        "grill"
+      ]
+    },
+    {
+      "employee_id": "e16",
+      "name": "Waiter 16",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 2,
+      "employeeType": "Permanent",
+      "skills": [
+        "service"
+      ]
+    },
+    {
+      "employee_id": "e17",
+      "name": "Waiter 17",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 3,
+      "employeeType": "Permanent",
+      "skills": [
+        "service"
+      ]
+    },
+    {
+      "employee_id": "e18",
+      "name": "Waiter 18",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 4,
+      "employeeType": "Permanent",
+      "skills": [
+        "service"
+      ]
+    },
+    {
+      "employee_id": "e19",
+      "name": "Waiter 19",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 5,
+      "employeeType": "Permanent",
+      "skills": [
+        "service"
+      ]
+    },
+    {
+      "employee_id": "e20",
+      "name": "Waiter 20",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 1,
+      "employeeType": "Permanent",
+      "skills": [
+        "service"
+      ]
+    },
+    {
+      "employee_id": "e21",
+      "name": "Waiter 21",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 2,
+      "employeeType": "Permanent",
+      "skills": [
+        "service"
+      ]
+    },
+    {
+      "employee_id": "e22",
+      "name": "Waiter 22",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 3,
+      "employeeType": "Permanent",
+      "skills": [
+        "service"
+      ]
+    },
+    {
+      "employee_id": "e23",
+      "name": "Waiter 23",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 4,
+      "employeeType": "Permanent",
+      "skills": [
+        "service"
+      ]
+    },
+    {
+      "employee_id": "e24",
+      "name": "Waiter 24",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 5,
+      "employeeType": "Permanent",
+      "skills": [
+        "service"
+      ]
+    },
+    {
+      "employee_id": "e25",
+      "name": "Waiter 25",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 1,
+      "employeeType": "Permanent",
+      "skills": []
+    }
+  ]
+}

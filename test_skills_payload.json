@@ -1,0 +1,29 @@
+{
+  "shift_name": "Lunch Shift",
+  "start_date": "2026-06-21",
+  "end_date": "2026-06-21",
+  "start_time": "10:00",
+  "end_time": "14:00",
+  "schedule_breaks": false,
+  "prioritize_permanent": false,
+  "overrideExisting": true,
+  "roles": [
+    {
+      "role_name": "Cook",
+      "rating": 1,
+      "max_workers": 1,
+      "required_skills": ["cooking", "Food Safety"]
+    }
+  ],
+  "existing_users": [
+    {
+      "employee_id": "EMP_TEST1",
+      "name": "Typo Cook",
+      "role": "Cook",
+      "rate": 15,
+      "unit": "hour",
+      "rating": 5,
+      "skills": [" Cooking ", "FOOD SAFETY"]
+    }
+  ]
+}

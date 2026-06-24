@@ -1,0 +1,116 @@
+{
+  "shift_name": "Morning Shift",
+  "start_date": "2026-06-20",
+  "end_date": "2026-06-20",
+  "start_time": "08:00",
+  "end_time": "16:00",
+  "schedule_breaks": true,
+  "prioritize_permanent": false,
+  "overrideExisting": true,
+  "roles": [
+    {
+      "role_name": "Cook",
+      "rating": 1,
+      "max_workers": 2,
+      "required_skills": ["Cooking", "Food Safety"]
+    },
+    {
+      "role_name": "Waiter",
+      "rating": 3,
+      "max_workers": 3,
+      "required_skills": ["Serving"]
+    }
+  ],
+  "existing_users": [
+    {
+      "employee_id": "EMP_C1",
+      "name": "Cheap Cook",
+      "role": "Cook",
+      "rate": 15,
+      "unit": "hour",
+      "rating": 2,
+      "skills": ["Cooking", "Food Safety"]
+    },
+    {
+      "employee_id": "EMP_C2",
+      "name": "Expensive Cook",
+      "role": "Cook",
+      "rate": 20,
+      "unit": "hour",
+      "rating": 3,
+      "skills": ["Cooking", "Food Safety"]
+    },
+    {
+      "employee_id": "EMP_C3",
+      "name": "Five Star Cook",
+      "role": "Cook",
+      "rate": 25,
+      "unit": "hour",
+      "rating": 5,
+      "skills": ["Cooking", "Food Safety"]
+    },
+    {
+      "employee_id": "EMP_C4",
+      "name": "Missing Skill Cook",
+      "role": "Cook",
+      "rate": 15,
+      "unit": "hour",
+      "rating": 4,
+      "skills": ["Cooking"]
+    },
+    {
+      "employee_id": "EMP_C5",
+      "name": "Unskilled Cook",
+      "role": "Cook",
+      "rate": 10,
+      "unit": "hour",
+      "rating": 5,
+      "skills": ["Cleaning"]
+    },
+    {
+      "employee_id": "EMP_W1",
+      "name": "Low Rating Waiter",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 2,
+      "skills": ["Serving"]
+    },
+    {
+      "employee_id": "EMP_W2",
+      "name": "Average Waiter",
+      "role": "Waiter",
+      "rate": 12,
+      "unit": "hour",
+      "rating": 3,
+      "skills": ["Serving"]
+    },
+    {
+      "employee_id": "EMP_W3",
+      "name": "Good Waiter",
+      "role": "Waiter",
+      "rate": 14,
+      "unit": "hour",
+      "rating": 4,
+      "skills": ["Serving"]
+    },
+    {
+      "employee_id": "EMP_W4",
+      "name": "Best Waiter",
+      "role": "Waiter",
+      "rate": 16,
+      "unit": "hour",
+      "rating": 5,
+      "skills": ["Serving"]
+    },
+    {
+      "employee_id": "EMP_W5",
+      "name": "Expensive Best Waiter",
+      "role": "Waiter",
+      "rate": 30,
+      "unit": "hour",
+      "rating": 5,
+      "skills": ["Serving"]
+    }
+  ]
+}

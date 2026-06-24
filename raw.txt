@@ -1,0 +1,86 @@
+<USER_REQUEST>
+{
+  "shift_name": "Morning",
+  "start_date": "2026-01-19",
+  "end_date": "2026-01-23",
+  "start_time": "06:00",
+  "end_time": "14:00",
+  "prioritizePermanent": true,
+  "schedule_breaks": true,
+  "roles": [
+    { "role_name": "CNC Operator", "rating": 4, "max_workers": 8 },
+    { "role_name": "Helper", "rating": 2, "max_workers": 12 },
+    { "role_name": "Supervisor", "rating": 5, "max_workers": 2 }
+  ],
+  "existing_users": [
+    { "employee_id": "101", "name": "Rajesh Kumar", "rate": 15.0, "unit": "hour", "rating": 5, "role": "CNC Operator", "gender": "Male", "employeeType": "Permanent" },
+    { "employee_id": "102", "name": "Priya Sharma", "rate": 8.0, "unit": "hour", "rating": 3, "role": "Helper", "gender": "Female", "employeeType": "Permanent" },
+    { "employee_id": "103", "name": "Amit Patel", "rate": 16.0, "unit": "hour", "rating": 4, "role": "CNC Operator", "gender": "Male", "employeeType": "Contract" },
+    { "employee_id": "104", "name": "Radha Kumari", "rate": 9.0, "unit": "hour", "rating": 4, "role": "Helper", "gender": "Female", "employeeType": "Permanent" },
+    { "employee_id": "105", "name": "Vikram Singh", "rate": 25.0, "unit": "hour", "rating": 5, "role": "Supervisor", "gender": "Male", "employeeType": "Permanent" },
+    { "employee_id": "106", "name": "Suresh Verma", "rate": 14.0, "unit": "hour", "rating": 3, "role": "CNC Operator", "gender": "Male", "employeeType": "Permanent" },
+    { "employee_id": "107", "name": "Anita Desai", "rate": 7.5, "unit": "hour", "rating": 2, "role": "Helper", "gender": "Female", "employeeType": "Contract" },
+    { "employee_id": "108", "name": "Deepak Gupta", "rate": 15.5, "unit": "hour", "rating": 5, "role": "CNC Operator", "gender": "Male", "employeeType": "Contract" },
+    { "employee_id": "109", "name": "Neha Jain", "rate": 8.5, "unit": "hour", "rating": 3, "role": "Helper", "gender": "Female", "employeeType": "Permanent" },
+    { "employee_id": "110", "name": "Ravi Tiwari", "rate": 26.0, "unit": "hour", "rating": 5, "role"
+<truncated 45215 bytes>
+
+                "gender": "Female",
+                "break": {
+                    "breakSlot": "10:00 - 10:30",
+                    "breakStart": "10:00",
+                    "breakType": "MANDATORY",
+                    "breakDuration": 30,
+                    "breakEnd": "10:30"
+                },
+                "rating": 5,
+                "regular_hours": 8.0,
+                "employeeId": "222",
+                "ot_hours": 0,
+                "wage": 16.0
+            },
+            {
+                "skills": [],
+                "employeeName": "Priya Sharma",
+                "role": "Helper",
+                "employeeType": "Permanent",
+                "gender": "Female",
+                "break": {
+                    "breakSlot": "10:00 - 10:30",
+                    "breakStart": "10:00",
+                    "breakType": "MANDATORY",
+                    "breakDuration": 30,
+                    "breakEnd": "10:30"
+                },
+                "rating": 3,
+                "regular_hours": 8.0,
+                "employeeId": "102",
+                "ot_hours": 0,
+                "wage": 8.0
+            },
+            {
+                "skills": [],
+                "employeeName": "Vikram Singh",
+                "role": "Supervisor",
+                "employeeType": "Permanent",
+                "gender": "Male",
+                "break": {
+                    "breakSlot": "10:00 - 10:30",
+                    "breakStart": "10:00",
+                    "breakType": "MANDATORY",
+                    "breakDuration": 30,
+                    "breakEnd": "10:30"
+                },
+                "rating": 5,
+                "regular_hours": 8.0,
+                "employeeId": "105",
+                "ot_hours": 0,
+                "wage": 25.0
+            },
+            {
+                "skills": [],
+                "employeeName": "Neha Mishra",
+           
+<truncated 61986 bytes>
+
+NOTE: The output was truncated because it was too long. Use a more targeted query or a smaller range to get the information you need.
