@@ -123,19 +123,17 @@ async function main() {
         });
     }
 
-    const times = [1, 5, 30, 300];
-    console.log("| Time Limit | Avg Rating | Avg Wage | Total Soft Score |");
+    const multipliers = [0, 25, 50, 100, 200, 500, 1000];
+    console.log("| Multiplier | Avg Rating | Avg Wage | Total Soft Score |");
     console.log("| :--- | :--- | :--- | :--- |");
     
-    // We will use multiplier 500
-    const m = 500;
-    
-    for (const t of times) {
+    // We will use 5s time limit since it's a tiny dataset (20 workers, 10 shifts)
+    for (const m of multipliers) {
         let payload = generatePayload(emps4, m, 10);
-        payload.time_limit_seconds = t;
-        payload.unimproved_time_limit_seconds = t; // Let it run the full time
+        payload.time_limit_seconds = 5;
+        payload.unimproved_time_limit_seconds = 2;
         
-        let res5 = await runTest(payload, `Test 5 (${t}s)`);
+        let res5 = await runTest(payload, `Test 5 (M=${m})`);
         if (res5 && res5.assignments_by_date) {
             let totalW = 0;
             let totalR = 0;
@@ -147,7 +145,7 @@ async function main() {
             const avgR = (totalR / shifts.length).toFixed(2);
             const avgW = (totalW / shifts.length).toFixed(2);
             const softScore = res5.solver_score ? res5.solver_score : "N/A";
-            console.log(`| ${t}s | ${avgR} | $${avgW} | ${softScore} |`);
+            console.log(`| ${m} | ${avgR} | $${avgW} | ${softScore} |`);
         }
     }
 }

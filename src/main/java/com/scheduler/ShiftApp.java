@@ -155,16 +155,25 @@ public class ShiftApp {
         System.out.println("✅ System ready. Use GET /shifts to view assignments.");
 
         // Load constraint configs from MySQL
-        List<ConstraintConfig> localConstraintConfigs = mysqlService.loadAllConstraintConfigs();
-        if (localConstraintConfigs.isEmpty()) {
-            localConstraintConfigs = getDefaultConstraintConfigs();
+        constraintConfigs = mysqlService.loadAllConstraintConfigs();
+        if (constraintConfigs.isEmpty()) {
+            constraintConfigs = getDefaultConstraintConfigs();
             mysqlService.insertDefaultConstraints(constraintConfigs);
             System.out.println("📋 Inserted 11 default constraint configs");
         } else {
             System.out.println("📋 Loaded " + constraintConfigs.size() + " constraint configs from DB");
         }
-    }
 
+        // Dynamically check for the 12th constraint (maximizeRating) and insert it if missing
+        boolean hasMaximizeRating = constraintConfigs.stream().anyMatch(c -> c.getConstraintId() == 12);
+        if (!hasMaximizeRating) {
+            ConstraintConfig maximizeRating = new ConstraintConfig(12, "maximizeRating", "Reward higher-rated employees", "SOFT", 100.0, "ratingMultiplier");
+            maximizeRating.setEnabled(true);
+            mysqlService.saveConstraintConfig(maximizeRating);
+            constraintConfigs.add(maximizeRating);
+            System.out.println("📋 Inserted maximizeRating constraint (12) dynamically");
+        }
+    }
 
     private void displayLoadedAssignments() {
         System.out.println("\n📊 Loaded Assignments Summary:");
@@ -10976,7 +10985,7 @@ public class ShiftApp {
                     .penalizeLong(resolveScore("wageOptimization", severity),
                             a -> {
                                 double wageRatio = a.getHourlyWage() / threadContext.get().averageWage;
-                                return (long) (wageRatio * 1000.0 * a.getShiftDurationHours());
+                                return (long) (wageRatio * 1000.0);
                             })
                     .asConstraint("wageOptimization_" + severity);
         }
@@ -11069,7 +11078,7 @@ public class ShiftApp {
 
         // Constraint #11: Permanent Priority
         private Constraint buildPermanentPriority(ConstraintFactory factory, String severity) {
-            return factory.forEach(Scheduler.EmployeeAssignment.class)
+            return factory.forEachIncludingNullVars(Scheduler.EmployeeAssignment.class)
                     .filter(a -> a.getShift() == null) // Unassigned employee
                     .filter(a -> a.isPermanentEmployee())
                     .filter(a -> isConstraintActive("permanentPriority", severity, a))
@@ -11155,7 +11164,8 @@ public class ShiftApp {
     @Path("/constraints")
     @Produces(MediaType.APPLICATION_JSON)
     public Response getConstraints() {
-        return Response.ok(Map.of("constraints", constraintConfigs)).build();
+        List<ConstraintConfig> configs = mysqlService.loadAllConstraintConfigs();
+        return Response.ok(Map.of("constraints", configs)).build();
     }
 
     // ============ PUT /constraints ============
@@ -11640,7 +11650,6 @@ public class ShiftApp {
             long unimprovedLimit = input.containsKey("unimproved_time_limit_seconds") ? ((Number) input.get("unimproved_time_limit_seconds")).longValue() : 30L;
 
             SolverConfig solverConfig = new SolverConfig()
-                    .withEnvironmentMode(ai.timefold.solver.core.config.solver.EnvironmentMode.FULL_ASSERT)
                     .withSolutionClass(ShiftScheduleV2.class)
                     .withEntityClasses(Scheduler.EmployeeAssignment.class)
                     .withConstraintProviderClass(ShiftConstraintsV2.class)
@@ -11689,9 +11698,11 @@ public class ShiftApp {
                 if ("Night".equals(s) && "Female".equalsIgnoreCase(emp.getGender())) continue;
 
                 // Save to shiftAssignments
-                shiftAssignments.computeIfAbsent(d, k -> new HashMap<>())
-                        .computeIfAbsent(s, k -> new ArrayList<>())
-                        .add(eid);
+                List<String> empList = shiftAssignments.computeIfAbsent(d, k -> new HashMap<>())
+                        .computeIfAbsent(s, k -> new ArrayList<>());
+                if (!empList.contains(eid)) {
+                    empList.add(eid);
+                }
 
                 // Save to shift times cache
                 employeeShiftTimesCache.computeIfAbsent(d, k -> new ConcurrentHashMap<>())

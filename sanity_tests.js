@@ -59,7 +59,7 @@ async function runTests() {
             constraints: [{ "constraintId": 5, "severity": "SOFT", "enabled": true }] // Wage Optimization
         });
 
-        let res = await request('POST', '/shifts/assign_v2', payloadA);
+        let res = await request('POST', '/shifts/assign-v2', payloadA);
         console.log("  SOFT Rating, $30/r3 vs $32/r5 -> Winner:", res.data.assignments && res.data.assignments[0] ? res.data.assignments[0].employeeId : "none");
 
         // Enable maximizeRating HARD
@@ -67,7 +67,7 @@ async function runTests() {
             constraints: [{ "constraintId": 12, "severity": "HARD", "enabled": true, "parameterValue": 100.0 }]
         });
         
-        res = await request('POST', '/shifts/assign_v2', payloadA);
+        res = await request('POST', '/shifts/assign-v2', payloadA);
         console.log("  HARD Rating, $30/r3 vs $32/r5 -> Winner:", res.data.assignments && res.data.assignments[0] ? res.data.assignments[0].employeeId : "none");
 
         // Test 2: Wage Normalization Test
@@ -80,7 +80,7 @@ async function runTests() {
         let payloadB = JSON.parse(JSON.stringify(payloadA));
         payloadB.employees[1].wage = 100; // EmpB is now $100
         
-        res = await request('POST', '/shifts/assign_v2', payloadB);
+        res = await request('POST', '/shifts/assign-v2', payloadB);
         console.log("  SOFT Rating, $30/r3 vs $100/r5 -> Winner:", res.data.assignments && res.data.assignments[0] ? res.data.assignments[0].employeeId : "none");
 
 
@@ -98,7 +98,7 @@ async function runTests() {
             constraints: [{ "constraintId": 1, "severity": "SOFT", "enabled": true, "parameterValue": 100.0 }]
         });
         
-        res = await request('POST', '/shifts/assign_v2', payloadC);
+        res = await request('POST', '/shifts/assign-v2', payloadC);
         console.log("  Skills: EmpA[java,sql] vs EmpB[java] -> Winner:", res.data.assignments && res.data.assignments[0] ? res.data.assignments[0].employeeId : "none");
 
         // Test 4: Dynamic Constraint Disable Test
@@ -108,7 +108,7 @@ async function runTests() {
             constraints: [{ "constraintId": 12, "enabled": false }]
         });
         // Now wage is the only differentiator
-        res = await request('POST', '/shifts/assign_v2', payloadA);
+        res = await request('POST', '/shifts/assign-v2', payloadA);
         console.log("  Disabled Rating, $30/r3 vs $32/r5 -> Winner:", res.data.assignments && res.data.assignments[0] ? res.data.assignments[0].employeeId : "none");
 
         // Test 5 & 6: Thread Cleanup & Ghost Employee
@@ -121,8 +121,8 @@ async function runTests() {
         payloadD2.required_skills = { "Developer": ["angular"] };
         payloadD2.employees = [{ "id": "EmpAngular", "wage": 30, "rating": 5, "skills": ["angular"], "position": "Developer" }];
 
-        res = await request('POST', '/shifts/assign_v2', payloadD1);
-        let res2 = await request('POST', '/shifts/assign_v2', payloadD2);
+        res = await request('POST', '/shifts/assign-v2', payloadD1);
+        let res2 = await request('POST', '/shifts/assign-v2', payloadD2);
         
         console.log("  Schedule 1 (Java): Winner =", res.data.assignments && res.data.assignments[0] ? res.data.assignments[0].employeeId : "none");
         console.log("  Schedule 2 (Angular): Winner =", res2.data.assignments && res2.data.assignments[0] ? res2.data.assignments[0].employeeId : "none");
