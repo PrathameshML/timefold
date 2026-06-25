@@ -11316,6 +11316,29 @@ public class ShiftApp {
                 }
             }
             
+            // ============ DYNAMIC OPTIMIZATION MODE ============
+            Object optObj = input.get("optimization");
+            String optimizationMode = optObj != null ? optObj.toString() : "both";
+            
+            if (!optimizationMode.equalsIgnoreCase("cost") && 
+                !optimizationMode.equalsIgnoreCase("quality") && 
+                !optimizationMode.equalsIgnoreCase("both")) {
+                return Response.status(400).entity(Map.of(
+                        "error", "Invalid optimization mode",
+                        "message", "Optimization parameter must be 'cost', 'quality', or 'both'."
+                )).build();
+            }
+
+            if ("cost".equalsIgnoreCase(optimizationMode)) {
+                // Pure cost: Disable rating maximization, Force enable wage optimization
+                localConstraintConfigs.stream().filter(c -> c.getConstraintId() == 12).forEach(c -> c.setEnabled(false));
+                localConstraintConfigs.stream().filter(c -> c.getConstraintId() == 5).forEach(c -> c.setEnabled(true));
+            } else if ("quality".equalsIgnoreCase(optimizationMode)) {
+                // Pure quality: Disable wage optimization, Force enable rating maximization
+                localConstraintConfigs.stream().filter(c -> c.getConstraintId() == 5).forEach(c -> c.setEnabled(false));
+                localConstraintConfigs.stream().filter(c -> c.getConstraintId() == 12).forEach(c -> c.setEnabled(true));
+            }
+            
             int breakAfterHours = 4; // Default fallback
             ConstraintConfig breakConfig = localConstraintConfigs.stream()
                     .filter(c -> c.getConstraintId() == 9)
