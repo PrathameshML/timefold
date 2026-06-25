@@ -11244,8 +11244,18 @@ public class ShiftApp {
     @Produces(MediaType.APPLICATION_JSON)
     public Response assignShiftsV2(Map<String, Object> input) {
         try {
-            System.out.println("=== POST /shifts/assign-v2 (with skills + dynamic constraints) ===");
-            System.out.println("Input: " + input);
+            return Response.ok(solveShiftV2(input)).build();
+        } catch (IllegalArgumentException e) {
+            return Response.status(400).entity(Map.of("error", e.getMessage())).build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Response.status(500).entity(Map.of("error", "V2 assignment failed: " + e.getMessage())).build();
+        }
+    }
+
+    private Map<String, Object> solveShiftV2(Map<String, Object> input) throws Exception {
+        System.out.println("=== POST /shifts/assign-v2 (with skills + dynamic constraints) ===");
+        System.out.println("Input: " + input);
 
             // ============ VALIDATION ============
             @SuppressWarnings("unchecked")
@@ -11268,10 +11278,7 @@ public class ShiftApp {
                     }
                 }
                 if (!duplicateIds.isEmpty()) {
-                    return Response.status(400).entity(Map.of(
-                            "error", "Duplicate employee IDs found",
-                            "duplicates", duplicateIds
-                    )).build();
+                    throw new IllegalArgumentException("Duplicate employee IDs found: " + duplicateIds.keySet());
                 }
             }
 
@@ -11323,10 +11330,7 @@ public class ShiftApp {
             if (!optimizationMode.equalsIgnoreCase("cost") && 
                 !optimizationMode.equalsIgnoreCase("quality") && 
                 !optimizationMode.equalsIgnoreCase("both")) {
-                return Response.status(400).entity(Map.of(
-                        "error", "Invalid optimization mode",
-                        "message", "Optimization parameter must be 'cost', 'quality', or 'both'."
-                )).build();
+                throw new IllegalArgumentException("Invalid optimization mode provided: " + optimizationMode + ". Supported modes: cost, quality, both");
             }
 
             if ("cost".equalsIgnoreCase(optimizationMode)) {
@@ -11354,20 +11358,16 @@ public class ShiftApp {
 
             boolean prioritizePermanent = Boolean.TRUE.equals(input.getOrDefault("prioritize_permanent", true));
 
-            if (shiftName == null || startDateStr == null || endDateStr == null ||
-                    startTime == null || endTime == null ||
-                    roles == null || roles.isEmpty() || existingUsers == null) {
-                return Response.status(400).entity(Map.of(
-                        "error", "Missing required fields",
-                        "required", Arrays.asList("shift_name", "start_date", "end_date", "start_time", "end_time", "roles", "existing_users")
-                )).build();
+            List<String> missingFields = validateShiftInput(input);
+            if (!missingFields.isEmpty()) {
+                throw new IllegalArgumentException("Missing required fields: " + String.join(", ", missingFields));
             }
 
             LocalDate startDate = LocalDate.parse(startDateStr);
             LocalDate endDate = LocalDate.parse(endDateStr);
 
             if (endDate.isBefore(startDate)) {
-                return Response.status(400).entity(Map.of("error", "End date must be after start date")).build();
+                throw new IllegalArgumentException("End date must be after start date");
             }
 
             // Working dates (Include all days)
@@ -11459,7 +11459,7 @@ public class ShiftApp {
                 // Skills must be passed explicitly in JSON.
                 @SuppressWarnings("unchecked")
                 List<String> skillsList = (List<String>) user.get("skills");
-                if (skillsList != null && !skillsList.isEmpty()) {
+                if (skillsList != null) {
                     empInfo.getSkills().clear();
                     empInfo.getSkills().addAll(skillsList);
                 }
@@ -11670,12 +11670,7 @@ public class ShiftApp {
             System.out.println("   Skipped: " + skippedCount);
 
             if (!overrideExisting && planningEntities.isEmpty()) {
-                return Response.status(Response.Status.CONFLICT).entity(Map.of(
-                        "status", "error",
-                        "message", "No employees available for assignment",
-                        "skipped_count", skippedCount,
-                        "skipped_by_date", skippedPerDate
-                )).build();
+                throw new Exception("No employees available for assignment. Skipped count: " + skippedCount);
             }
 
             // ============ CONFIGURE AND RUN V2 SOLVER ============
@@ -11732,18 +11727,22 @@ public class ShiftApp {
                     .map(c -> c.getParameterValue() != null ? c.getParameterValue() : 8.0)
                     .orElse(8.0);
 
+            List<String> debugLog = new ArrayList<>();
             for (Scheduler.EmployeeAssignment ea : solved.getAssignments()) {
-                if (ea.isPinned()) continue; // Ignore pinned historical context entities
+                String logMsg = "EA: " + ea.getEmployeeId() + " shift=" + ea.getShift() + " pinned=" + ea.isPinned();
+                if (ea.isPinned()) { debugLog.add(logMsg + " -> SKIPPED (pinned)"); continue; }
                 
                 String s = ea.getShift();
-                if (s == null) continue;
+                if (s == null) { debugLog.add(logMsg + " -> SKIPPED (shift null)"); continue; }
 
                 String d = ea.getDate();
                 String eid = ea.getEmployeeId();
                 EmployeeInfo emp = allEmployees.get(eid);
-                if (emp == null) continue;
+                logMsg += " emp=" + (emp != null ? "found" : "not found");
+                if (emp == null) { debugLog.add(logMsg + " -> SKIPPED (emp null)"); continue; }
 
-                if ("Night".equals(s) && "Female".equalsIgnoreCase(emp.getGender())) continue;
+                if ("Night".equals(s) && "Female".equalsIgnoreCase(emp.getGender())) { debugLog.add(logMsg + " -> SKIPPED (female night)"); continue; }
+                debugLog.add(logMsg + " -> PROCESSED");
 
                 // Save to shiftAssignments
                 List<String> empList = shiftAssignments.computeIfAbsent(d, k -> new HashMap<>())
@@ -11881,15 +11880,137 @@ public class ShiftApp {
 
             // Assignment details grouped by date
             response.put("assignments_by_date", assignmentDetails);
+            response.put("debug_log", debugLog);
             response.put("score_explanation", scoreExplanation);
             response.put("message", "Successfully assigned shifts (V2 with dynamic constraints)!");
+
+            return response;
+    }
+
+    @POST
+    @Path("/shifts/batch-assign-v2")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response batchAssignShiftsV2(Map<String, Object> input) {
+        try {
+            System.out.println("=== POST /shifts/batch-assign-v2 ===");
+            System.out.println("Input: " + input);
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> shifts = (List<Map<String, Object>>) input.get("shifts");
+
+            if (shifts == null || shifts.isEmpty()) {
+                return Response.status(400).entity(Map.of(
+                        "error", "Missing required field",
+                        "required", "shifts array cannot be empty"
+                )).build();
+            }
+
+            // Validate all shifts first (exact V1 behavior)
+            List<Map<String, Object>> validationErrors = new ArrayList<>();
+            for (int i = 0; i < shifts.size(); i++) {
+                Map<String, Object> shift = shifts.get(i);
+                List<String> missingFields = validateShiftInput(shift);
+                if (!missingFields.isEmpty()) {
+                    Map<String, Object> error = new HashMap<>();
+                    error.put("shift_index", i);
+                    error.put("shift_name", shift.get("shift_name"));
+                    error.put("missing_fields", missingFields);
+                    validationErrors.add(error);
+                }
+            }
+
+            if (!validationErrors.isEmpty()) {
+                return Response.status(400).entity(Map.of(
+                        "status", "error",
+                        "message", "Validation failed for one or more shifts",
+                        "errors", validationErrors
+                )).build();
+            }
+
+            // Process each shift
+            List<Map<String, Object>> shiftResults = new ArrayList<>();
+            Map<String, Object> overallStats = new HashMap<>();
+
+            int totalAssignments = 0;
+            int totalWorkingDays = 0;
+            int totalBreaksScheduled = 0;
+            int totalSkipped = 0;
+            long totalSolverTime = 0;
+
+            for (int i = 0; i < shifts.size(); i++) {
+                Map<String, Object> shift = shifts.get(i);
+                System.out.println("\n📋 Processing V2 shift " + (i+1) + "/" + shifts.size());
+                
+                try {
+                    // Call the pure Java V2 logic directly
+                    Map<String, Object> result = solveShiftV2(shift);
+                    result.put("shift_index", i);
+                    result.put("status", "success");
+                    shiftResults.add(result);
+
+                    // Accumulate statistics
+                    totalAssignments += (int) result.getOrDefault("new_assignments_made", 0);
+                    totalWorkingDays += (int) result.getOrDefault("total_working_days", 0);
+                    totalBreaksScheduled += (int) result.getOrDefault("breakSchedulesCount", 0);
+                    totalSkipped += (int) result.getOrDefault("skipped_count", 0);
+                    totalSolverTime += ((Number) result.getOrDefault("solver_time_seconds", 0.0)).longValue();
+                } catch (Exception e) {
+                    Map<String, Object> errorResult = new HashMap<>();
+                    errorResult.put("shift_index", i);
+                    errorResult.put("shift_name", shift.get("shift_name"));
+                    errorResult.put("status", "error");
+                    errorResult.put("error_message", e.getMessage());
+                    shiftResults.add(errorResult);
+                    e.printStackTrace();
+                }
+            }
+
+            // Prepare overall statistics (exact V1 match)
+            overallStats.put("total_shifts_processed", shifts.size());
+            overallStats.put("successful_shifts", shiftResults.stream()
+                    .filter(r -> "success".equals(r.get("status")))
+                    .count());
+            overallStats.put("failed_shifts", shiftResults.stream()
+                    .filter(r -> "error".equals(r.get("status")))
+                    .count());
+            overallStats.put("total_assignments_made", totalAssignments);
+            overallStats.put("total_working_days", totalWorkingDays);
+            overallStats.put("total_breaks_scheduled", totalBreaksScheduled);
+            overallStats.put("total_skipped_assignments", totalSkipped);
+            overallStats.put("total_solver_time_seconds", totalSolverTime);
+
+            // Build final response
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "completed");
+            response.put("version", "v2");
+            response.put("overall_statistics", overallStats);
+            response.put("shift_results", shiftResults);
+
+            // Add exact V1 summary message
+            String summary = String.format(
+                    "Batch assignment completed. Processed %d shifts. Success: %d, Failed: %d. " +
+                            "Total assignments: %d across %d days. Scheduled %d breaks.",
+                    shifts.size(),
+                    overallStats.get("successful_shifts"),
+                    overallStats.get("failed_shifts"),
+                    totalAssignments,
+                    totalWorkingDays,
+                    totalBreaksScheduled
+            );
+            response.put("summary", summary);
+
+            System.out.println("\n✅ Batch Assignment V2 Complete!");
+            System.out.println(summary);
 
             return Response.ok(response).build();
 
         } catch (Exception e) {
             e.printStackTrace();
             return Response.status(500).entity(Map.of(
-                    "error", "V2 assignment failed: " + e.getMessage()
+                    "status", "error",
+                    "error", "Batch assignment v2 failed: " + e.getMessage(),
+                    "stacktrace", Arrays.toString(e.getStackTrace())
             )).build();
         }
     }
