@@ -1,0 +1,76 @@
+Explanation of score (0hard/-1384medium/-1472349soft):
+    Constraint matches:
+        -1384medium: constraint (maxWeeklyHours_MEDIUM) has 173 matches:
+            -8medium: justified with ([E390, 36, 2880])
+            -8medium: justified with ([E270, 36, 2880])
+            ...
+        -2099345soft: constraint (wageOptimization_SOFT) has 2100 matches:
+            -1382soft: justified with ([com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@33107dac])
+            -1382soft: justified with ([com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@78ffa8ab])
+            ...
+        -1416soft: constraint (skillMatch_SOFT) has 1416 matches:
+            -1soft: justified with ([com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@6961177b])
+            -1soft: justified with ([com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@18f0b67d])
+            ...
+        -1400soft: constraint (permanentPriority_SOFT) has 1400 matches:
+            -1soft: justified with ([com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@495b8522])
+            -1soft: justified with ([com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@726a75f0])
+            ...
+        -188soft: constraint (consecutiveShifts_SOFT) has 436 matches:
+            -4soft: justified with ([E352, [com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@11052bd9, com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@1acce1b3, com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@63de732b]])
+            -4soft: justified with ([E476, [com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@70bf9347, com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@3e2d1cd6]])
+            ...
+        0: constraint (breakAfterHours_HARD) has 0 matches:
+        0: constraint (breakAfterHours_MEDIUM) has 0 matches:
+        0: constraint (breakAfterHours_SOFT) has 0 matches:
+        0: constraint (consecutiveShifts_HARD) has 0 matches:
+        0: constraint (consecutiveShifts_MEDIUM) has 0 matches:
+        0: constraint (everyShiftPlanned_HARD) has 0 matches:
+        0: constraint (everyShiftPlanned_MEDIUM) has 0 matches:
+        0: constraint (everyShiftPlanned_SOFT) has 0 matches:
+        0: constraint (maxDailyHours_HARD) has 0 matches:
+        0: constraint (maxDailyHours_MEDIUM) has 0 matches:
+        0: constraint (maxDailyHours_SOFT) has 0 matches:
+        0: constraint (maxWeeklyHours_HARD) has 0 matches:
+        0: constraint (maxWeeklyHours_SOFT) has 0 matches:
+        0: constraint (maxWorkersPerRolePerShift) has 0 matches:
+        0: constraint (maximizeRating_HARD) has 0 matches:
+        0: constraint (maximizeRating_MEDIUM) has 0 matches:
+        0: constraint (noOverlappingShifts_HARD) has 0 matches:
+        0: constraint (noOverlappingShifts_MEDIUM) has 0 matches:
+        0: constraint (noOverlappingShifts_SOFT) has 0 matches:
+        0: constraint (overtimeThreshold_HARD) has 0 matches:
+        0: constraint (overtimeThreshold_MEDIUM) has 0 matches:
+        0: constraint (overtimeThreshold_SOFT) has 0 matches:
+        0: constraint (permanentPriority_HARD) has 0 matches:
+        0: constraint (permanentPriority_MEDIUM) has 0 matches:
+        0: constraint (skillMatch_HARD) has 0 matches:
+        0: constraint (skillMatch_MEDIUM) has 0 matches:
+        0: constraint (unavailableTimeslot_ratingMismatch_HARD) has 0 matches:
+        0: constraint (unavailableTimeslot_ratingMismatch_MEDIUM) has 0 matches:
+        0: constraint (unavailableTimeslot_ratingMismatch_SOFT) has 0 matches:
+        0: constraint (wageOptimization_HARD) has 0 matches:
+        0: constraint (wageOptimization_MEDIUM) has 0 matches:
+        630000soft: constraint (maximizeRating_SOFT) has 2100 matches:
+            300soft: justified with ([com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@6961177b])
+            300soft: justified with ([com.scheduler.ShiftApp$Scheduler$EmployeeAssignment@18f0b67d])
+            ...
+    Indictments (top 5 of 4374):
+        -1384medium: indicted with (36) has 173 matches:
+            -8medium: constraint (maxWeeklyHours_MEDIUM)
+            -8medium: constraint (maxWeeklyHours_MEDIUM)
+            ...
+        -1384medium: indicted with (2880) has 173 matches:
+            -8medium: constraint (maxWeeklyHours_MEDIUM)
+            -8medium: constraint (maxWeeklyHours_MEDIUM)
+            ...
+        -8medium: indicted with (E390) has 2 matches:
+            -8medium: constraint (maxWeeklyHours_MEDIUM)
+            0: constraint (consecutiveShifts_SOFT)
+        -8medium: indicted with (E270) has 2 matches:
+            -8medium: constraint (maxWeeklyHours_MEDIUM)
+            0: constraint (consecutiveShifts_SOFT)
+        -8medium: indicted with (E391) has 2 matches:
+            -8medium: constraint (maxWeeklyHours_MEDIUM)
+            0: constraint (consecutiveShifts_SOFT)
+        ...

@@ -11484,6 +11484,7 @@ public class ShiftApp {
 
             // ============ BUILD PLANNING ENTITIES ============
             List<Scheduler.EmployeeAssignment> planningEntities = new ArrayList<>();
+            Map<String, Scheduler.EmployeeAssignment> unpinnedEntityMap = new HashMap<>();
             int skippedCount = 0;
             int totalPossibleAssignments = 0;
             Map<String, List<String>> skippedPerDate = new HashMap<>();
@@ -11555,9 +11556,9 @@ public class ShiftApp {
                         entity.setHasScheduledBreak(true);
                     }
 
+                    unpinnedEntityMap.put(empId + "_" + dateStr, entity);
                     planningEntities.add(entity);
                 }
-
                 if (!skippedOnThisDate.isEmpty()) {
                     skippedPerDate.put(dateStr, skippedOnThisDate);
                 }
@@ -11573,18 +11574,42 @@ public class ShiftApp {
                 boolean inActiveWindow = !d.isBefore(startDate) && !d.isAfter(endDate);
                 String dStr = d.toString();
                 
-                Map<String, List<String>> pastAssignments;
-                if (inActiveWindow) {
-                    pastAssignments = manualAssignments.get(dStr);
-                } else {
-                    pastAssignments = shiftAssignments.get(dStr);
+                Map<String, List<String>> pastAssignments = new HashMap<>();
+                
+                // Add shiftAssignments first (auto-solver history)
+                if (shiftAssignments.containsKey(dStr)) {
+                    for (Map.Entry<String, List<String>> entry : shiftAssignments.get(dStr).entrySet()) {
+                        pastAssignments.computeIfAbsent(entry.getKey(), k -> new ArrayList<>()).addAll(entry.getValue());
+                    }
                 }
-                if (pastAssignments == null) continue;
+                
+                // Add manualAssignments (they stack with shift assignments for constraints)
+                if (manualAssignments.containsKey(dStr)) {
+                    for (Map.Entry<String, List<String>> entry : manualAssignments.get(dStr).entrySet()) {
+                        List<String> list = pastAssignments.computeIfAbsent(entry.getKey(), k -> new ArrayList<>());
+                        for (String e : entry.getValue()) {
+                            if (!list.contains(e)) list.add(e);
+                        }
+                    }
+                }
+                
+                if (pastAssignments.isEmpty()) continue;
                 
                 for (Map.Entry<String, List<String>> shiftEntry : pastAssignments.entrySet()) {
                     String sName = shiftEntry.getKey();
                     for (String eId : shiftEntry.getValue()) {
                         if (!allEmployees.containsKey(eId)) continue; // Only pin employees relevant to this request
+                        
+                        String entityKey = eId + "_" + dStr;
+                        if (unpinnedEntityMap.containsKey(entityKey)) {
+                            Scheduler.EmployeeAssignment existing = unpinnedEntityMap.get(entityKey);
+                            existing.setShift(sName);
+                            existing.setPinned(true);
+                            if (sName.equals(shiftName)) {
+                                existing.setRequestedShift(shiftName);
+                            }
+                            continue; // Skip creating a duplicate!
+                        }
                         
                         EmployeeInfo emp = allEmployees.get(eId);
                         Scheduler.EmployeeAssignment pinnedEntity = new Scheduler.EmployeeAssignment(
