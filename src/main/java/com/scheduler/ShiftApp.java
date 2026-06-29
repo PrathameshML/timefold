@@ -11647,9 +11647,7 @@ public class ShiftApp {
                             Scheduler.EmployeeAssignment existing = unpinnedEntityMap.get(entityKey);
                             existing.setShift(sName);
                             existing.setPinned(true);
-                            if (sName.equals(shiftName)) {
-                                existing.setRequestedShift(shiftName);
-                            }
+                            existing.setRequestedShift(null); // Clear it so pinned do not consume max_workers capacity
                             continue; // Skip creating a duplicate!
                         }
                         
@@ -11675,9 +11673,7 @@ public class ShiftApp {
                         pinnedEntity.setShiftDurationHours(shiftDurationHours);
                         pinnedEntity.setIsoWeekNum(d.get(java.time.temporal.WeekFields.ISO.weekOfYear()));
                         pinnedEntity.setLocalDateObj(d);
-                        if (sName.equals(shiftName)) {
-                            pinnedEntity.setRequestedShift(shiftName);
-                        }
+                        // pinnedEntity.setRequestedShift(shiftName) removed so pinned do not consume max_workers capacity
                         planningEntities.add(pinnedEntity);
                     }
                 }
@@ -12939,9 +12935,7 @@ public class ShiftApp {
                             EmployeeAssignmentV3 existing = unpinnedEntityMap.get(entityKey);
                             existing.setShift(sName);
                             existing.setPinned(true);
-                            if (sName.equals(shiftName)) {
-                                existing.setRequestedShift(shiftName);
-                            }
+                            existing.setRequestedShift(null); // Clear it so pinned do not consume max_workers capacity
                             continue; // Skip creating a duplicate!
                         }
                         
@@ -12967,9 +12961,7 @@ public class ShiftApp {
                         pinnedEntity.setShiftDurationHours(shiftDurationHours);
                         pinnedEntity.setIsoWeekNum(d.get(java.time.temporal.WeekFields.ISO.weekOfYear()));
                         pinnedEntity.setLocalDateObj(d);
-                        if (sName.equals(shiftName)) {
-                            pinnedEntity.setRequestedShift(shiftName);
-                        }
+                        // pinnedEntity.setRequestedShift(shiftName) removed so pinned do not consume max_workers capacity
                         planningEntities.add(pinnedEntity);
                     }
                 }
