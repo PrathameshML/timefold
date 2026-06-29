@@ -49,6 +49,7 @@ public class MySQLService {
         String sqlOvertime = "CREATE TABLE IF NOT EXISTS overtime_records (id VARCHAR(50) PRIMARY KEY,employee_id VARCHAR(50) NOT NULL,date DATE NOT NULL,hours DOUBLE NOT NULL,type VARCHAR(50) NULL,status VARCHAR(20) NOT NULL,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)";
         String sqlNotifications = "CREATE TABLE IF NOT EXISTS notifications (id VARCHAR(50) PRIMARY KEY,recipient_id VARCHAR(50) NOT NULL,message VARCHAR(500) NOT NULL,type VARCHAR(50) NULL,is_read BOOLEAN DEFAULT FALSE,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)";
         String sqlConstraintConfig = "CREATE TABLE IF NOT EXISTS constraint_config (constraint_id INT PRIMARY KEY,constraint_name VARCHAR(100) NOT NULL,description VARCHAR(500),enabled BOOLEAN DEFAULT TRUE,severity VARCHAR(10) NOT NULL DEFAULT 'HARD',parameter_value DOUBLE NULL,parameter_name VARCHAR(50) NULL,parameter_value_2 DOUBLE NULL,parameter_name_2 VARCHAR(50) NULL,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)";
+        String sqlConstraintConfigV3 = "CREATE TABLE IF NOT EXISTS constraint_config_v3 (constraint_id INT PRIMARY KEY,constraint_name VARCHAR(100) NOT NULL,description VARCHAR(500),enabled BOOLEAN DEFAULT TRUE,severity VARCHAR(10) NOT NULL DEFAULT 'HARD',parameter_value DOUBLE NULL,parameter_name VARCHAR(50) NULL,parameter_value_2 DOUBLE NULL,parameter_name_2 VARCHAR(50) NULL,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)";
         try (Connection conn = this.getConnection();
              Statement stmt = conn.createStatement();){
             stmt.execute(sqlEmployees);
@@ -59,6 +60,7 @@ public class MySQLService {
             stmt.execute(sqlOvertime);
             stmt.execute(sqlNotifications);
             stmt.executeUpdate(sqlConstraintConfig);
+            stmt.executeUpdate(sqlConstraintConfigV3);
             try {
                 stmt.executeUpdate("ALTER TABLE constraint_config ADD COLUMN parameter_value_2 DOUBLE NULL");
                 stmt.executeUpdate("ALTER TABLE constraint_config ADD COLUMN parameter_name_2 VARCHAR(50) NULL");
@@ -783,5 +785,75 @@ public class MySQLService {
             saveConstraintConfig(config);
         }
         System.out.println("✅ Inserted " + defaults.size() + " default constraint configs");
+    }
+
+    public List<ShiftApp.ConstraintConfig> loadAllConstraintConfigsV3() {
+        List<ShiftApp.ConstraintConfig> configs = new ArrayList<>();
+        String sql = "SELECT constraint_id, constraint_name, description, enabled, severity, parameter_value, parameter_name, parameter_value_2, parameter_name_2 FROM constraint_config_v3 ORDER BY constraint_id";
+        try (Connection conn = this.getConnection();
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                ShiftApp.ConstraintConfig config = new ShiftApp.ConstraintConfig();
+                config.setConstraintId(rs.getInt("constraint_id"));
+                config.setConstraintName(rs.getString("constraint_name"));
+                config.setDescription(rs.getString("description"));
+                config.setEnabled(rs.getBoolean("enabled"));
+                config.setSeverity(rs.getString("severity"));
+                double paramVal = rs.getDouble("parameter_value");
+                config.setParameterValue(rs.wasNull() ? null : paramVal);
+                config.setParameterName(rs.getString("parameter_name"));
+                
+                double paramVal2 = rs.getDouble("parameter_value_2");
+                config.setParameterValue2(rs.wasNull() ? null : paramVal2);
+                config.setParameterName2(rs.getString("parameter_name_2"));
+                
+                configs.add(config);
+            }
+        } catch (SQLException e) {
+            System.err.println("❌ Failed to load V3 constraint configs: " + e.getMessage());
+        }
+        return configs;
+    }
+
+    public void saveConstraintConfigV3(ShiftApp.ConstraintConfig config) {
+        String sql = "INSERT INTO constraint_config_v3 (constraint_id, constraint_name, description, enabled, severity, parameter_value, parameter_name, parameter_value_2, parameter_name_2) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE " +
+                "constraint_name = VALUES(constraint_name), description = VALUES(description), " +
+                "enabled = VALUES(enabled), severity = VALUES(severity), " +
+                "parameter_value = VALUES(parameter_value), parameter_name = VALUES(parameter_name), " +
+                "parameter_value_2 = VALUES(parameter_value_2), parameter_name_2 = VALUES(parameter_name_2)";
+        try (Connection conn = this.getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setInt(1, config.getConstraintId());
+            pstmt.setString(2, config.getConstraintName());
+            pstmt.setString(3, config.getDescription());
+            pstmt.setBoolean(4, config.isEnabled());
+            pstmt.setString(5, config.getSeverity());
+            if (config.getParameterValue() != null) {
+                pstmt.setDouble(6, config.getParameterValue());
+            } else {
+                pstmt.setNull(6, java.sql.Types.DOUBLE);
+            }
+            pstmt.setString(7, config.getParameterName());
+            
+            if (config.getParameterValue2() != null) {
+                pstmt.setDouble(8, config.getParameterValue2());
+            } else {
+                pstmt.setNull(8, java.sql.Types.DOUBLE);
+            }
+            pstmt.setString(9, config.getParameterName2());
+            
+            pstmt.executeUpdate();
+        } catch (SQLException e) {
+            System.err.println("❌ Failed to save V3 constraint config: " + e.getMessage());
+        }
+    }
+
+    public void insertDefaultConstraintsV3(List<ShiftApp.ConstraintConfig> defaults) {
+        for (ShiftApp.ConstraintConfig config : defaults) {
+            saveConstraintConfigV3(config);
+        }
+        System.out.println("✅ Inserted " + defaults.size() + " default V3 constraint configs");
     }
 }

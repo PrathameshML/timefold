@@ -1,0 +1,53 @@
+    public static class ShiftScheduleV3 {
+        @PlanningEntityCollectionProperty
+        private List<EmployeeAssignmentV3> assignments;
+
+        @ValueRangeProvider(id = "shiftRange")
+        private List<String> shiftTypes;
+
+        @ProblemFactCollectionProperty
+        private List<Scheduler.ShiftSchedule.RoleLimit> roleLimits;
+
+        @ProblemFactCollectionProperty
+        private List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements;
+
+        @ProblemFactCollectionProperty
+        private List<Scheduler.ShiftSchedule.EmployeeTypePriority> employeeTypePriorities = new ArrayList<>();
+
+        @PlanningScore
+        private HardMediumSoftLongScore score;
+
+        private String requestedShiftName;
+        private boolean prioritizePermanent;
+
+        public ShiftScheduleV3() {}
+
+        public ShiftScheduleV3(List<EmployeeAssignmentV3> assignments, List<String> shiftTypes,
+                               List<Scheduler.ShiftSchedule.RoleLimit> roleLimits,
+                               List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements) {
+            this.assignments = assignments;
+            this.shiftTypes = shiftTypes;
+            this.roleLimits = roleLimits;
+            this.ratingRequirements = ratingRequirements;
+            this.employeeTypePriorities = new ArrayList<>();
+        }
+
+        public List<EmployeeAssignmentV3> getAssignments() { return assignments; }
+        public void setAssignments(List<EmployeeAssignmentV3> assignments) { this.assignments = assignments; }
+        public List<String> getShiftTypes() { return shiftTypes; }
+        public void setShiftTypes(List<String> shiftTypes) { this.shiftTypes = shiftTypes; }
+        public List<Scheduler.ShiftSchedule.RoleLimit> getRoleLimits() { return roleLimits; }
+        public void setRoleLimits(List<Scheduler.ShiftSchedule.RoleLimit> roleLimits) { this.roleLimits = roleLimits; }
+        public List<Scheduler.ShiftSchedule.RatingRequirement> getRatingRequirements() { return ratingRequirements; }
+        public void setRatingRequirements(List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements) { this.ratingRequirements = ratingRequirements; }
+        public List<Scheduler.ShiftSchedule.EmployeeTypePriority> getEmployeeTypePriorities() { return employeeTypePriorities; }
+        public void setEmployeeTypePriorities(List<Scheduler.ShiftSchedule.EmployeeTypePriority> employeeTypePriorities) { this.employeeTypePriorities = employeeTypePriorities; }
+        public HardMediumSoftLongScore getScore() { return score; }
+        public void setScore(HardMediumSoftLongScore score) { this.score = score; }
+        public String getRequestedShiftName() { return requestedShiftName; }
+        public void setRequestedShiftName(String requestedShiftName) { this.requestedShiftName = requestedShiftName; }
+        public boolean isPrioritizePermanent() { return prioritizePermanent; }
+        public void setPrioritizePermanent(boolean prioritizePermanent) { this.prioritizePermanent = prioritizePermanent; }
+    }
+
+    // ============ ShiftConstraintsV2 — Dynamic Constraint Provider ============
