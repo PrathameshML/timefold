@@ -12559,6 +12559,127 @@ public class ShiftApp {
         }
     }
 
+    @POST
+    @Path("/shifts/batch-assign-v3")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response batchAssignShiftsV3(Map<String, Object> input) {
+        try {
+            System.out.println("=== POST /shifts/batch-assign-v3 ===");
+            System.out.println("Input: " + input);
+
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> shifts = (List<Map<String, Object>>) input.get("shifts");
+
+            if (shifts == null || shifts.isEmpty()) {
+                return Response.status(400).entity(Map.of(
+                        "error", "Missing required field",
+                        "required", "shifts array cannot be empty"
+                )).build();
+            }
+
+            // Validate all shifts first
+            List<Map<String, Object>> validationErrors = new ArrayList<>();
+            for (int i = 0; i < shifts.size(); i++) {
+                Map<String, Object> shift = shifts.get(i);
+                List<String> missingFields = validateShiftInput(shift);
+                if (!missingFields.isEmpty()) {
+                    Map<String, Object> error = new HashMap<>();
+                    error.put("shift_index", i);
+                    error.put("shift_name", shift.get("shift_name"));
+                    error.put("missing_fields", missingFields);
+                    validationErrors.add(error);
+                }
+            }
+
+            if (!validationErrors.isEmpty()) {
+                return Response.status(400).entity(Map.of(
+                        "status", "error",
+                        "message", "Validation failed for one or more shifts",
+                        "errors", validationErrors
+                )).build();
+            }
+
+            // Process each shift
+            List<Map<String, Object>> shiftResults = new ArrayList<>();
+            Map<String, Object> overallStats = new HashMap<>();
+
+            int totalAssignments = 0;
+            int totalWorkingDays = 0;
+            int totalSkipped = 0;
+            long totalSolverTime = 0;
+
+            for (int i = 0; i < shifts.size(); i++) {
+                Map<String, Object> shift = shifts.get(i);
+                System.out.println("\n📋 Processing V3 shift " + (i+1) + "/" + shifts.size());
+                
+                try {
+                    // Call the pure Java V3 logic directly
+                    Map<String, Object> result = solveShiftV3(shift);
+                    result.put("shift_index", i);
+                    result.put("status", "success");
+                    shiftResults.add(result);
+
+                    // Accumulate statistics
+                    totalAssignments += (int) result.getOrDefault("new_assignments_made", 0);
+                    totalWorkingDays += (int) result.getOrDefault("total_working_days", 0);
+                    totalSkipped += (int) result.getOrDefault("skipped_count", 0);
+                    totalSolverTime += ((Number) result.getOrDefault("solver_time_seconds", 0.0)).longValue();
+                } catch (Exception e) {
+                    Map<String, Object> errorResult = new HashMap<>();
+                    errorResult.put("shift_index", i);
+                    errorResult.put("shift_name", shift.get("shift_name"));
+                    errorResult.put("status", "error");
+                    errorResult.put("error_message", e.getMessage());
+                    shiftResults.add(errorResult);
+                    e.printStackTrace();
+                }
+            }
+
+            // Prepare overall statistics
+            overallStats.put("total_shifts_processed", shifts.size());
+            overallStats.put("successful_shifts", shiftResults.stream()
+                    .filter(r -> "success".equals(r.get("status")))
+                    .count());
+            overallStats.put("failed_shifts", shiftResults.stream()
+                    .filter(r -> "error".equals(r.get("status")))
+                    .count());
+            overallStats.put("total_assignments_made", totalAssignments);
+            overallStats.put("total_working_days", totalWorkingDays);
+            overallStats.put("total_skipped_assignments", totalSkipped);
+            overallStats.put("total_solver_time_seconds", totalSolverTime);
+
+            // Build final response
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "completed");
+            response.put("version", "v3");
+            response.put("overall_statistics", overallStats);
+            response.put("shift_results", shiftResults);
+
+            String summary = String.format(
+                    "Batch assignment completed. Processed %d shifts. Success: %d, Failed: %d. Total assignments: %d across %d days.",
+                    shifts.size(),
+                    overallStats.get("successful_shifts"),
+                    overallStats.get("failed_shifts"),
+                    totalAssignments,
+                    totalWorkingDays
+            );
+            response.put("summary", summary);
+
+            System.out.println("\n✅ Batch Assignment V3 Complete!");
+            System.out.println(summary);
+
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return Response.status(500).entity(Map.of(
+                    "status", "error",
+                    "error", "Batch assignment v3 failed: " + e.getMessage(),
+                    "stacktrace", Arrays.toString(e.getStackTrace())
+            )).build();
+        }
+    }
+
     private Map<String, Object> solveShiftV3(Map<String, Object> input) throws Exception {
         System.out.println("=== POST /shifts/assign-v3 (with dynamic constraints) ===");
         System.out.println("Input: " + input);
