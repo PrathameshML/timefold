@@ -12340,7 +12340,7 @@ public class ShiftApp {
             Map<String, List<Integer>> requiredRatingsPerRole = new HashMap<>();
             Map<String, List<String>> requiredSkillsPerRole = new HashMap<>();
             List<ConstraintConfig> activeConstraintConfigs = new ArrayList<>();
-            double averageWage = 1.0;
+            Map<String, Double> averageWagePerRole = new HashMap<>();
         }
 
         private static final ThreadLocal<Context> threadContext = ThreadLocal.withInitial(Context::new);
@@ -12350,14 +12350,14 @@ public class ShiftApp {
                 List<Scheduler.ShiftSchedule.RatingRequirement> ratingRequirements,
                 Map<String, List<String>> skillsMap,
                 List<ConstraintConfig> configs,
-                double avgWage) {
+                Map<String, Double> avgWagePerRole) {
 
             Context ctx = threadContext.get();
             ctx.maxWorkersPerRole.clear();
             ctx.requiredRatingsPerRole.clear();
             ctx.requiredSkillsPerRole = skillsMap != null ? new HashMap<>(skillsMap) : new HashMap<>();
             ctx.activeConstraintConfigs = configs != null ? new ArrayList<>(configs) : new ArrayList<>();
-            ctx.averageWage = avgWage > 0 ? avgWage : 1.0;
+            ctx.averageWagePerRole = avgWagePerRole != null ? new HashMap<>(avgWagePerRole) : new HashMap<>();
 
             for (Scheduler.ShiftSchedule.RoleLimit l : roleLimits) {
                 ctx.maxWorkersPerRole.put(l.getRoleName(), l.getMaxWorkers());
@@ -12459,7 +12459,7 @@ public class ShiftApp {
                     .filter(a -> isConstraintActive("v3WageOptimization", "SOFT", a))
                     .penalizeLong(HardMediumSoftLongScore.ONE_SOFT,
                             a -> {
-                                double wageRatio = a.getHourlyWage() / threadContext.get().averageWage;
+                                double wageRatio = a.getHourlyWage() / threadContext.get().averageWagePerRole.getOrDefault(a.getPosition(), 1.0);
                                 double multiplier = getConstraintParameter("v3WageOptimization", 1000.0, a);
                                 return (long) (wageRatio * multiplier);
                             })
@@ -12959,15 +12959,19 @@ public class ShiftApp {
 
             // constraintConfigs already loaded at the top of the method
 
-            double sum = 0.0;
-            int count = 0;
+            Map<String, Double> sumPerRole = new HashMap<>();
+            Map<String, Integer> countPerRole = new HashMap<>();
             for (EmployeeInfo emp : allEmployees.values()) {
-                if (roleLimits.stream().anyMatch(rl -> rl.getRoleName().equals(emp.getPosition()))) {
-                    sum += emp.getHourlyWage();
-                    count++;
+                String role = emp.getPosition();
+                if (roleLimits.stream().anyMatch(rl -> rl.getRoleName().equals(role))) {
+                    sumPerRole.put(role, sumPerRole.getOrDefault(role, 0.0) + emp.getHourlyWage());
+                    countPerRole.put(role, countPerRole.getOrDefault(role, 0) + 1);
                 }
             }
-            double averageWage = count > 0 ? sum / count : 1.0;
+            Map<String, Double> averageWagePerRole = new HashMap<>();
+            for (String role : sumPerRole.keySet()) {
+                averageWagePerRole.put(role, sumPerRole.get(role) / countPerRole.get(role));
+            }
 
         String optimization = input.containsKey("optimization") ? (String) input.get("optimization") : "both";
         optimization = optimization.toLowerCase();
@@ -12979,7 +12983,7 @@ public class ShiftApp {
             else if (optimization.equals("quality") && copy.getConstraintName().equals("v3WageOptimization")) copy.setEnabled(false);
             runConstraints.add(copy);
         }
-        ShiftConstraintsV3.setConfiguration(roleLimits, ratingRequirements, requiredSkillsMap, runConstraints, averageWage);
+        ShiftConstraintsV3.setConfiguration(roleLimits, ratingRequirements, requiredSkillsMap, runConstraints, averageWagePerRole);
 
             ShiftScheduleV3 problem = new ShiftScheduleV3(planningEntities, possibleShifts, roleLimits, ratingRequirements);
             problem.setRequestedShiftName(shiftName);
@@ -13138,6 +13142,7 @@ public class ShiftApp {
 
             // Assignment details grouped by date
             response.put("assignments_by_date", assignmentDetails);
+            response.put("debug_log", debugLog);
 
             response.put("message", "Successfully assigned shifts (V3 API)!");
 
