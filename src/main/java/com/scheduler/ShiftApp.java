@@ -12438,7 +12438,7 @@ public class ShiftApp {
                                     Scheduler.ShiftSchedule.RoleLimit::getRoleName))
                     .filter((date, position, count, roleLimit) -> count < roleLimit.getMaxWorkers())
                     .penalizeLong(HardMediumSoftLongScore.ONE_MEDIUM,
-                            (date, position, count, roleLimit) -> (long) (roleLimit.getMaxWorkers() - count))
+                            (date, position, count, roleLimit) -> (long) (roleLimit.getMaxWorkers() - count) * 10000L)
                     .asConstraint("v3EveryShiftPlanned")
             );
             // v3NoOverlappingShifts
@@ -12560,7 +12560,7 @@ public class ShiftApp {
     }
 
     private Map<String, Object> solveShiftV3(Map<String, Object> input) throws Exception {
-        System.out.println("=== POST /shifts/assign-v2 (with skills + dynamic constraints) ===");
+        System.out.println("=== POST /shifts/assign-v3 (with dynamic constraints) ===");
         System.out.println("Input: " + input);
 
             // ============ VALIDATION ============
@@ -12639,14 +12639,8 @@ public class ShiftApp {
                 throw new IllegalArgumentException("Invalid optimization mode provided: " + optimizationMode + ". Supported modes: cost, quality, both");
             }
 
-            if ("cost".equalsIgnoreCase(optimizationMode)) {
-                // Pure cost: Disable rating maximization, Force enable wage optimization
-                localConstraintConfigs.stream().filter(c -> c.getConstraintId() == 12).forEach(c -> c.setEnabled(false));
-                localConstraintConfigs.stream().filter(c -> c.getConstraintId() == 5).forEach(c -> c.setEnabled(true));
-            } else if ("quality".equalsIgnoreCase(optimizationMode)) {
-                // Pure quality: Disable wage optimization, Force enable rating maximization
-                localConstraintConfigs.stream().filter(c -> c.getConstraintId() == 5).forEach(c -> c.setEnabled(false));
-                localConstraintConfigs.stream().filter(c -> c.getConstraintId() == 12).forEach(c -> c.setEnabled(true));
+            if ("cost".equalsIgnoreCase(optimizationMode) || "quality".equalsIgnoreCase(optimizationMode) || "both".equalsIgnoreCase(optimizationMode)) {
+                // Optimization mode is handled dynamically during solver config injection
             }
             
             int breakAfterHours = 4; // Default fallback
@@ -12858,18 +12852,7 @@ public class ShiftApp {
                     entity.setLocalDateObj(date);
                     entity.setRequestedShift(shiftName);
                     
-                    List<String> required = requiredSkillsMap.getOrDefault(emp.getPosition(), List.of());
-                    Set<String> empSkills = emp.getSkills() != null ? emp.getSkills() : Set.of();
-                    long missing = required.stream().filter(reqSkill -> {
-                        if (reqSkill == null) return false;
-                        String normalizedReq = reqSkill.trim().toLowerCase();
-                        return empSkills.stream()
-                                .filter(s -> s != null)
-                                .map(s -> s.trim().toLowerCase())
-                                .noneMatch(normalizedReq::equals);
-                    }).count();
-                    entity.setMissingSkillCount(missing);
-                    
+                    // Missing skill check removed per user request for V3.
                     entity.setSkills(emp.getSkills());
                     entity.setEmployeeType(emp.getEmployeeType());
                     entity.setPrioritizePermanent(prioritizePermanent);
@@ -12894,14 +12877,9 @@ public class ShiftApp {
                 }
             }
 
-            // INJECT HISTORICAL PINNED ASSIGNMENTS FOR CONSTRAINTS (e.g. maxWeeklyHours, consecutiveShifts)
-            LocalDate historyStart = startDate.minusDays(7);
-            LocalDate historyEnd = endDate.plusDays(7);
-            for (LocalDate d = historyStart; !d.isAfter(historyEnd); d = d.plusDays(1)) {
-                // Fix #1b: Differentiate manual pins from auto-solver history.
-                // For dates inside the active planning window, ONLY inject manual assignments.
-                // For dates outside, inject all assignments (auto + manual) to provide historical context.
-                boolean inActiveWindow = !d.isBefore(startDate) && !d.isAfter(endDate);
+            // INJECT HISTORICAL PINNED ASSIGNMENTS FOR CONSTRAINTS (v3NoOverlappingShifts)
+            // V3 ONLY has same-day overlap constraints, so we ONLY need to fetch the exact requested dates!
+            for (LocalDate d : workingDates) {
                 String dStr = d.toString();
                 
                 Map<String, List<String>> pastAssignments = new HashMap<>();
@@ -12967,7 +12945,7 @@ public class ShiftApp {
                 }
             }
 
-            System.out.println("\n📊 V2 Planning summary:");
+            System.out.println("\n📊 V3 Planning summary:");
             System.out.println("   Total possible: " + totalPossibleAssignments);
             System.out.println("   Entities to plan: " + planningEntities.size());
             System.out.println("   Skipped: " + skippedCount);
@@ -12976,15 +12954,20 @@ public class ShiftApp {
                 throw new Exception("No employees available for assignment. Skipped count: " + skippedCount);
             }
 
-            // ============ CONFIGURE AND RUN V2 SOLVER ============
+            // ============ CONFIGURE AND RUN V3 SOLVER ============
             List<String> possibleShifts = Arrays.asList(shiftName);
 
             // constraintConfigs already loaded at the top of the method
 
-            double averageWage = employeeWages.values().stream()
-                    .mapToDouble(Double::doubleValue)
-                    .average()
-                    .orElse(1.0);
+            double sum = 0.0;
+            int count = 0;
+            for (EmployeeInfo emp : allEmployees.values()) {
+                if (roleLimits.stream().anyMatch(rl -> rl.getRoleName().equals(emp.getPosition()))) {
+                    sum += emp.getHourlyWage();
+                    count++;
+                }
+            }
+            double averageWage = count > 0 ? sum / count : 1.0;
 
         String optimization = input.containsKey("optimization") ? (String) input.get("optimization") : "both";
         optimization = optimization.toLowerCase();
@@ -13002,8 +12985,12 @@ public class ShiftApp {
             problem.setRequestedShiftName(shiftName);
             problem.setPrioritizePermanent(prioritizePermanent);
 
-            long timeLimit = input.containsKey("time_limit_seconds") ? ((Number) input.get("time_limit_seconds")).longValue() : 60L;
-            long unimprovedLimit = input.containsKey("unimproved_time_limit_seconds") ? ((Number) input.get("unimproved_time_limit_seconds")).longValue() : 30L;
+            int totalEntities = allEmployees.size() * workingDates.size();
+            long defaultTimeLimit = 2L + (totalEntities / 20L); // 2s base + 1s per 20 entities (max optimization curve)
+            long defaultUnimprovedLimit = Math.max(1L, defaultTimeLimit / 4L); // 25% of total time
+
+            long timeLimit = input.containsKey("time_limit_seconds") ? ((Number) input.get("time_limit_seconds")).longValue() : defaultTimeLimit;
+            long unimprovedLimit = input.containsKey("unimproved_time_limit_seconds") ? ((Number) input.get("unimproved_time_limit_seconds")).longValue() : defaultUnimprovedLimit;
 
             SolverConfig solverConfig = new SolverConfig()
                     .withSolutionClass(ShiftScheduleV3.class)
@@ -13144,19 +13131,6 @@ public class ShiftApp {
             if (!requiredSkillsMap.isEmpty()) {
                 response.put("required_skills_by_role", requiredSkillsMap);
             }
-
-            // Active constraints info
-            List<Map<String, Object>> activeConstraints = new ArrayList<>();
-            for (ConstraintConfig cc : localConstraintConfigs) {
-                if (cc.isEnabled()) {
-                    Map<String, Object> cInfo = new LinkedHashMap<>();
-                    cInfo.put("name", cc.getConstraintName());
-                    cInfo.put("severity", cc.getSeverity());
-                    if (cc.getParameterValue() != null) cInfo.put("value", cc.getParameterValue());
-                    activeConstraints.add(cInfo);
-                }
-            }
-            response.put("active_constraints", activeConstraints);
 
             if (!skippedPerDate.isEmpty()) {
                 response.put("skipped_by_date", skippedPerDate);
