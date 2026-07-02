@@ -41,3 +41,19 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Added for Cleanup ###
+*.log
+*.ps1
+*.txt
+*.js
+*.json
+*.pdf
+
+
+### Added for Cleanup ###
+target/
+*.log
+*.ps1
+*.txt
+*.pdf
