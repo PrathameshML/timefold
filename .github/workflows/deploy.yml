@@ -32,7 +32,7 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           source: "target/quarkus-app"
-          target: "~/shif-app"
+          target: "~/shift-app"
           strip_components: 1
 
       - name: Restart Server
@@ -47,7 +47,7 @@ jobs:
             sleep 3
             
             echo "Setting environment variables and starting new application..."
-            cd ~/shiftapp/quarkus-app
+            cd ~/shift-app/quarkus-app
             export DB_URL="${{ secrets.DB_URL }}"
             export DB_USER="${{ secrets.DB_USER }}"
             export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
