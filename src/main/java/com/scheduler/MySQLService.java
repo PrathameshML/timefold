@@ -1,6 +1,10 @@
 
 package com.scheduler;
 
+import org.jboss.logging.Logger;
+import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
+
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.scheduler.ShiftApp;
 import jakarta.annotation.PostConstruct;
@@ -21,17 +25,19 @@ import javax.sql.DataSource;
 
 @ApplicationScoped
 public class MySQLService {
+    private static final Logger LOG = Logger.getLogger(MySQLService.class);
+
     @Inject
     DataSource dataSource;
     private static final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     public MySQLService() {
-        System.out.println("\ud83d\udd04 MySQLService bean created");
+        LOG.debug("\ud83d\udd04 MySQLService bean created");
     }
 
     @PostConstruct
     public void init() {
-        System.out.println("\ud83d\udd04 MySQLService CDI initialized");
+        LOG.debug("\ud83d\udd04 MySQLService CDI initialized");
         this.initializeDatabase();
     }
 
@@ -101,11 +107,11 @@ public class MySQLService {
             catch (SQLException sQLException) {
                 // empty catch block
             }
-            System.out.println("\u2705 MySQL tables ready (Expanded Schema)");
+            LOG.debug("\u2705 MySQL tables ready (Expanded Schema)");
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to initialize table: " + e.getMessage());
-            e.printStackTrace();
+            LOG.error("\u274c Failed to initialize table: " + e.getMessage());
+            LOG.error("Exception caught", e);
         }
     }
 
@@ -123,7 +129,7 @@ public class MySQLService {
             pstmt.executeUpdate();
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to sync employee: " + e.getMessage());
+            LOG.error("\u274c Failed to sync employee: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -133,10 +139,10 @@ public class MySQLService {
         try (Connection conn = this.getConnection();
              Statement stmt = conn.createStatement();){
             stmt.executeUpdate(sql);
-            System.out.println("\ud83d\uddd1\ufe0f Cleared all employees");
+            LOG.debug("\ud83d\uddd1\ufe0f Cleared all employees");
         }
         catch (SQLException e) {
-            System.err.println("\u274c Clear employees failed: " + e.getMessage());
+            LOG.error("\u274c Clear employees failed: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -150,15 +156,15 @@ public class MySQLService {
             stmt.executeUpdate("DELETE FROM leave_coverage_requests");
             stmt.executeUpdate("DELETE FROM notifications");
             stmt.executeUpdate("DELETE FROM overtime_records");
-            System.out.println("🗑️ CLEARED ENTIRE DATABASE (Except Configs)");
+            LOG.debug("🗑️ CLEARED ENTIRE DATABASE (Except Configs)");
         } catch (SQLException e) {
-            System.err.println("❌ Clear database failed: " + e.getMessage());
+            LOG.error("❌ Clear database failed: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
 
     public void syncTimefoldAssignment(String date, String shift, String employeeId, String employeeName, String employeeRole, String employeeCategory, String gender, int rating, String startTime, String endTime) {
-        System.out.println("\u26a1 TIMEFOLD SYNC - " + date + " " + shift + " " + employeeId);
+        LOG.debug("\u26a1 TIMEFOLD SYNC - " + date + " " + shift + " " + employeeId);
         String sql = "INSERT INTO shift_assignments (assignment_date, shift_name, employee_id, employee_name, employee_role, employee_category, gender, rating, start_time, end_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE employee_name = VALUES(employee_name), employee_role = VALUES(employee_role), employee_category = VALUES(employee_category), gender = VALUES(gender), rating = VALUES(rating), start_time = VALUES(start_time), end_time = VALUES(end_time)";
         try (Connection conn = this.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql, 1);){
@@ -173,17 +179,17 @@ public class MySQLService {
             pstmt.setString(9, startTime);
             pstmt.setString(10, endTime);
             pstmt.executeUpdate();
-            System.out.println("\u2705\u2705\u2705 TIMEFOLD SYNC SUCCESS! " + employeeId);
+            LOG.debug("\u2705\u2705\u2705 TIMEFOLD SYNC SUCCESS! " + employeeId);
         }
         catch (SQLException e) {
-            System.err.println("\u274c TIMEFOLD SYNC FAILED: " + e.getMessage());
-            e.printStackTrace();
+            LOG.error("\u274c TIMEFOLD SYNC FAILED: " + e.getMessage());
+            LOG.error("Exception caught", e);
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
 
     public void syncManualAssignment(String date, String shift, String employeeId, String employeeName, String gender, String startTime, String endTime) {
-        System.out.println("\ud83d\udcdd MANUAL SYNC (with NULLs) - " + date + " " + shift + " " + employeeId);
+        LOG.debug("\ud83d\udcdd MANUAL SYNC (with NULLs) - " + date + " " + shift + " " + employeeId);
         String sql = "INSERT INTO shift_assignments (assignment_date, shift_name, employee_id, employee_name, employee_role, employee_category, gender, rating, start_time, end_time) VALUES (?, ?, ?, ?, NULL, NULL, ?, NULL, ?, ?) ON DUPLICATE KEY UPDATE employee_name = VALUES(employee_name), employee_role = NULL, employee_category = NULL, gender = VALUES(gender), rating = NULL, start_time = VALUES(start_time), end_time = VALUES(end_time)";
         try (Connection conn = this.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql, 1);){
@@ -198,15 +204,15 @@ public class MySQLService {
             if (rowsAffected > 0) {
                 ResultSet rs = pstmt.getGeneratedKeys();
                 if (rs.next()) {
-                    System.out.println("\u2705\u2705\u2705 MANUAL SYNC SUCCESS! ID: " + rs.getInt(1) + " (with NULLs)");
+                    LOG.debug("\u2705\u2705\u2705 MANUAL SYNC SUCCESS! ID: " + rs.getInt(1) + " (with NULLs)");
                 } else {
-                    System.out.println("\u2705\u2705\u2705 MANUAL SYNC SUCCESS (updated with NULLs)");
+                    LOG.debug("\u2705\u2705\u2705 MANUAL SYNC SUCCESS (updated with NULLs)");
                 }
             }
         }
         catch (SQLException e) {
-            System.err.println("\u274c MANUAL SYNC FAILED: " + e.getMessage());
-            e.printStackTrace();
+            LOG.error("\u274c MANUAL SYNC FAILED: " + e.getMessage());
+            LOG.error("Exception caught", e);
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -218,10 +224,10 @@ public class MySQLService {
             pstmt.setString(1, employeeId);
             pstmt.setDate(2, Date.valueOf(date));
             pstmt.executeUpdate();
-            System.out.println("\u2705 Leave request deleted for " + employeeId + " on " + date);
+            LOG.debug("\u2705 Leave request deleted for " + employeeId + " on " + date);
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to delete leave request: " + e.getMessage());
+            LOG.error("\u274c Failed to delete leave request: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -237,10 +243,10 @@ public class MySQLService {
             pstmt.setString(5, type);
             pstmt.setString(6, status);
             pstmt.executeUpdate();
-            System.out.println("\u2705 Leave request saved: " + id);
+            LOG.debug("\u2705 Leave request saved: " + id);
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to save leave request: " + e.getMessage());
+            LOG.error("\u274c Failed to save leave request: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -259,7 +265,7 @@ public class MySQLService {
             }
         }
         catch (SQLException e) {
-            System.err.println("\u274c Load leaves failed: " + e.getMessage());
+            LOG.error("\u274c Load leaves failed: " + e.getMessage());
         }
         return leaves;
     }
@@ -277,11 +283,11 @@ public class MySQLService {
             pstmt.setString(3, employeeId);
             int deleted = pstmt.executeUpdate();
             if (deleted > 0) {
-                System.out.println("\ud83d\uddd1\ufe0f Removed: " + date + " " + shift + " " + employeeId);
+                LOG.debug("\ud83d\uddd1\ufe0f Removed: " + date + " " + shift + " " + employeeId);
             }
         }
         catch (SQLException e) {
-            System.err.println("\u274c Remove failed: " + e.getMessage());
+            LOG.error("\u274c Remove failed: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -292,10 +298,10 @@ public class MySQLService {
              PreparedStatement pstmt = conn.prepareStatement(sql);){
             pstmt.setDate(1, Date.valueOf(date));
             int deleted = pstmt.executeUpdate();
-            System.out.println("\ud83d\uddd1\ufe0f Cleared " + deleted + " records for " + date);
+            LOG.debug("\ud83d\uddd1\ufe0f Cleared " + deleted + " records for " + date);
         }
         catch (SQLException e) {
-            System.err.println("\u274c Clear failed: " + e.getMessage());
+            LOG.error("\u274c Clear failed: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -308,7 +314,7 @@ public class MySQLService {
             pstmt.executeUpdate();
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to remove employee from MySQL: " + e.getMessage());
+            LOG.error("\u274c Failed to remove employee from MySQL: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -321,7 +327,7 @@ public class MySQLService {
             pstmt.executeUpdate();
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to remove assignments for employee from MySQL: " + e.getMessage());
+            LOG.error("\u274c Failed to remove assignments for employee from MySQL: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -342,10 +348,10 @@ public class MySQLService {
             for (int result : results) {
                 totalDeleted += result;
             }
-            System.out.println("\ud83d\uddd1\ufe0f Batch cleared " + totalDeleted + " records across " + dates.size() + " dates");
+            LOG.debug("\ud83d\uddd1\ufe0f Batch cleared " + totalDeleted + " records across " + dates.size() + " dates");
         }
         catch (SQLException e) {
-            System.err.println("\u274c Batch clear failed: " + e.getMessage());
+            LOG.error("\u274c Batch clear failed: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -355,12 +361,12 @@ public class MySQLService {
         try (Connection conn = this.getConnection();
              Statement stmt = conn.createStatement();){
             int deleted = stmt.executeUpdate(sql);
-            System.out.println("\ud83d\uddd1\ufe0f Cleared ALL " + deleted + " records");
+            LOG.debug("\ud83d\uddd1\ufe0f Cleared ALL " + deleted + " records");
             stmt.executeUpdate("ALTER TABLE shift_assignments AUTO_INCREMENT = 1");
-            System.out.println("\ud83d\udd04 Reset AUTO_INCREMENT to 1");
+            LOG.debug("\ud83d\udd04 Reset AUTO_INCREMENT to 1");
         }
         catch (SQLException e) {
-            System.err.println("\u274c Clear all failed: " + e.getMessage());
+            LOG.error("\u274c Clear all failed: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -371,10 +377,10 @@ public class MySQLService {
              PreparedStatement pstmt = conn.prepareStatement(sql);){
             pstmt.setString(1, employeeId);
             int deleted = pstmt.executeUpdate();
-            System.out.println("\ud83d\uddd1\ufe0f Removed " + deleted + " assignments for employee: " + employeeId);
+            LOG.debug("\ud83d\uddd1\ufe0f Removed " + deleted + " assignments for employee: " + employeeId);
         }
         catch (SQLException e) {
-            System.err.println("\u274c Remove by employee failed: " + e.getMessage());
+            LOG.error("\u274c Remove by employee failed: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -397,7 +403,7 @@ public class MySQLService {
             return bl;
         }
         catch (SQLException e) {
-            System.err.println("\u274c Check failed: " + e.getMessage());
+            LOG.error("\u274c Check failed: " + e.getMessage());
         }
         return false;
     }
@@ -424,7 +430,7 @@ public class MySQLService {
             }
         }
         catch (SQLException e) {
-            System.err.println("\u274c Query failed: " + e.getMessage());
+            LOG.error("\u274c Query failed: " + e.getMessage());
         }
         return results;
     }
@@ -436,10 +442,10 @@ public class MySQLService {
             String json = mapper.writeValueAsString((Object)config);
             pstmt.setString(1, json);
             pstmt.executeUpdate();
-            System.out.println("\ud83d\udcbe Saved SystemConfig to MySQL");
+            LOG.debug("\ud83d\udcbe Saved SystemConfig to MySQL");
         }
         catch (Exception e) {
-            System.err.println("\u274c Failed to save SystemConfig: " + e.getMessage());
+            LOG.error("\u274c Failed to save SystemConfig: " + e.getMessage());
             throw new RuntimeException("Database save failed: " + e.getMessage(), e);
         }
     }
@@ -457,12 +463,12 @@ public class MySQLService {
             if (!rs.next()) return null;
             String json = rs.getString("config_json");
             ShiftApp.SystemConfig config = (ShiftApp.SystemConfig)mapper.readValue(json, ShiftApp.SystemConfig.class);
-            System.out.println("\ud83d\udce5 Loaded SystemConfig from MySQL");
+            LOG.debug("\ud83d\udce5 Loaded SystemConfig from MySQL");
             ShiftApp.SystemConfig systemConfig = config;
             return systemConfig;
         }
         catch (Exception e) {
-            System.err.println("\u274c Failed to load SystemConfig: " + e.getMessage());
+            LOG.error("\u274c Failed to load SystemConfig: " + e.getMessage());
         }
         return null;
     }
@@ -482,7 +488,7 @@ public class MySQLService {
             return n;
         }
         catch (SQLException e) {
-            System.err.println("\u274c Error getting total assignments count: " + e.getMessage());
+            LOG.error("\u274c Error getting total assignments count: " + e.getMessage());
         }
         return 0;
     }
@@ -507,7 +513,7 @@ public class MySQLService {
             }
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to load employees: " + e.getMessage());
+            LOG.error("\u274c Failed to load employees: " + e.getMessage());
         }
         return employeeInfo;
     }
@@ -526,7 +532,7 @@ public class MySQLService {
             }
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to load assignments: " + e.getMessage());
+            LOG.error("\u274c Failed to load assignments: " + e.getMessage());
         }
         return shiftAssignments;
     }
@@ -547,7 +553,7 @@ public class MySQLService {
             }
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to load employee shift times: " + e.getMessage());
+            LOG.error("\u274c Failed to load employee shift times: " + e.getMessage());
         }
         return cache;
     }
@@ -567,7 +573,7 @@ public class MySQLService {
             return n;
         }
         catch (SQLException e) {
-            System.err.println("\u274c Count failed: " + e.getMessage());
+            LOG.error("\u274c Count failed: " + e.getMessage());
         }
         return 0;
     }
@@ -584,10 +590,10 @@ public class MySQLService {
             pstmt.setString(6, record.isApproved() ? "APPROVED" : "PENDING");
             pstmt.setString(7, mapper.writeValueAsString((Object)record));
             pstmt.executeUpdate();
-            System.out.println("\u2705 Overtime record saved: " + record.getId());
+            LOG.debug("\u2705 Overtime record saved: " + record.getId());
         }
         catch (Exception e) {
-            System.err.println("\u274c Failed to save overtime record: " + e.getMessage());
+            LOG.error("\u274c Failed to save overtime record: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -606,7 +612,7 @@ public class MySQLService {
             }
         }
         catch (Exception e) {
-            System.err.println("\u274c Failed to load overtime records: " + e.getMessage());
+            LOG.error("\u274c Failed to load overtime records: " + e.getMessage());
         }
         return records;
     }
@@ -617,10 +623,10 @@ public class MySQLService {
              PreparedStatement pstmt = conn.prepareStatement(sql);){
             pstmt.setString(1, id);
             pstmt.executeUpdate();
-            System.out.println("\u2705 Overtime record deleted: " + id);
+            LOG.debug("\u2705 Overtime record deleted: " + id);
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to delete overtime record: " + e.getMessage());
+            LOG.error("\u274c Failed to delete overtime record: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -637,10 +643,10 @@ public class MySQLService {
             pstmt.setString(6, request.getStatus());
             pstmt.setString(7, mapper.writeValueAsString((Object)request));
             pstmt.executeUpdate();
-            System.out.println("\u2705 Coverage request saved: " + request.getId());
+            LOG.debug("\u2705 Coverage request saved: " + request.getId());
         }
         catch (Exception e) {
-            System.err.println("\u274c Failed to save coverage request: " + e.getMessage());
+            LOG.error("\u274c Failed to save coverage request: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -659,7 +665,7 @@ public class MySQLService {
             }
         }
         catch (Exception e) {
-            System.err.println("\u274c Failed to load coverage requests: " + e.getMessage());
+            LOG.error("\u274c Failed to load coverage requests: " + e.getMessage());
         }
         return requests;
     }
@@ -670,10 +676,10 @@ public class MySQLService {
              PreparedStatement pstmt = conn.prepareStatement(sql);){
             pstmt.setString(1, id);
             pstmt.executeUpdate();
-            System.out.println("\u2705 Coverage request deleted: " + id);
+            LOG.debug("\u2705 Coverage request deleted: " + id);
         }
         catch (SQLException e) {
-            System.err.println("\u274c Failed to delete coverage request: " + e.getMessage());
+            LOG.error("\u274c Failed to delete coverage request: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -691,7 +697,7 @@ public class MySQLService {
             pstmt.executeUpdate();
         }
         catch (Exception e) {
-            System.err.println("\u274c Failed to save notification: " + e.getMessage());
+            LOG.error("\u274c Failed to save notification: " + e.getMessage());
         }
     }
 
@@ -708,7 +714,7 @@ public class MySQLService {
             }
         }
         catch (Exception e) {
-            System.err.println("\u274c Failed to load notifications: " + e.getMessage());
+            LOG.error("\u274c Failed to load notifications: " + e.getMessage());
         }
         return notifications;
     }
@@ -738,9 +744,9 @@ public class MySQLService {
                 
                 configs.add(config);
             }
-            System.out.println("📋 Loaded " + configs.size() + " constraint configs from MySQL");
+            LOG.debug("📋 Loaded " + configs.size() + " constraint configs from MySQL");
         } catch (SQLException e) {
-            System.err.println("❌ Failed to load constraint configs: " + e.getMessage());
+            LOG.error("❌ Failed to load constraint configs: " + e.getMessage());
         }
         return configs;
     }
@@ -775,7 +781,7 @@ public class MySQLService {
 
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("❌ Failed to save constraint config: " + e.getMessage());
+            LOG.error("❌ Failed to save constraint config: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -784,7 +790,7 @@ public class MySQLService {
         for (ShiftApp.ConstraintConfig config : defaults) {
             saveConstraintConfig(config);
         }
-        System.out.println("✅ Inserted " + defaults.size() + " default constraint configs");
+        LOG.debug("✅ Inserted " + defaults.size() + " default constraint configs");
     }
 
     public List<ShiftApp.ConstraintConfig> loadAllConstraintConfigsV3() {
@@ -811,7 +817,7 @@ public class MySQLService {
                 configs.add(config);
             }
         } catch (SQLException e) {
-            System.err.println("❌ Failed to load V3 constraint configs: " + e.getMessage());
+            LOG.error("❌ Failed to load V3 constraint configs: " + e.getMessage());
         }
         return configs;
     }
@@ -846,7 +852,7 @@ public class MySQLService {
             
             pstmt.executeUpdate();
         } catch (SQLException e) {
-            System.err.println("❌ Failed to save V3 constraint config: " + e.getMessage());
+            LOG.error("❌ Failed to save V3 constraint config: " + e.getMessage());
         }
     }
 
@@ -854,6 +860,6 @@ public class MySQLService {
         for (ShiftApp.ConstraintConfig config : defaults) {
             saveConstraintConfigV3(config);
         }
-        System.out.println("✅ Inserted " + defaults.size() + " default V3 constraint configs");
+        LOG.debug("✅ Inserted " + defaults.size() + " default V3 constraint configs");
     }
 }

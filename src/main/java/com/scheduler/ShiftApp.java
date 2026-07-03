@@ -1,5 +1,9 @@
 package com.scheduler;
 
+import org.jboss.logging.Logger;
+import java.util.Collections;
+import java.util.concurrent.ConcurrentHashMap;
+
 import ai.timefold.solver.core.api.domain.entity.PlanningEntity;
 import ai.timefold.solver.core.api.domain.lookup.PlanningId;
 import ai.timefold.solver.core.api.domain.solution.ProblemFactCollectionProperty;
@@ -47,8 +51,10 @@ import static com.scheduler.ShiftApp.AttendanceService.sendNotification;
 @QuarkusMain
 @Path("/")
 public class ShiftApp {
+    private static final Logger LOG = Logger.getLogger(ShiftApp.class);
+
     private static void loadAssignments() {
-        System.out.println("📂 Loading data directly from MySQL database...");
+        LOG.debug("≡ƒôé Loading data directly from MySQL database...");
         
         employeeInfo.clear();
         employeeInfo.putAll(mysqlService.loadAllEmployees());
@@ -83,22 +89,22 @@ public class ShiftApp {
         SystemConfig dbConfig = mysqlService.loadSystemConfig();
         if (dbConfig != null) {
             systemConfig = dbConfig;
-            System.out.println("⚙️ Loaded SystemConfig from MySQL");
+            LOG.debug("ΓÜÖ∩╕Å Loaded SystemConfig from MySQL");
         } else {
-            System.out.println("⚙️ Using default SystemConfig (none in MySQL)");
+            LOG.debug("ΓÜÖ∩╕Å Using default SystemConfig (none in MySQL)");
         }
         
-        System.out.println("✅ Loaded " + shiftAssignments.size() + " days of assignments and " +
+        System.out.println("Γ£à Loaded " + shiftAssignments.size() + " days of assignments and " +
                 employeeInfo.size() + " employee records from MySQL");
 
         int totalAssignments = mysqlService.getTotalAssignmentCount();
-        System.out.println("📊 Total individual assignments: " + totalAssignments);
+        LOG.debug("≡ƒôè Total individual assignments: " + totalAssignments);
     }
 
 
     // Initialize employees from assignments when loading legacy format
     private static void initializeEmployeesFromAssignments() {
-        System.out.println("🔄 Initializing employees from assignments...");
+        LOG.debug("≡ƒöä Initializing employees from assignments...");
 
         // Collect all employee IDs from shiftAssignments
         Set<String> employeesNeeded = new HashSet<>();
@@ -108,7 +114,7 @@ public class ShiftApp {
             }
         }
 
-        System.out.println("📋 Employee IDs found in assignments: " + employeesNeeded.size());
+        LOG.debug("≡ƒôï Employee IDs found in assignments: " + employeesNeeded.size());
 
         // Only create employees for IDs that don't exist yet
         int created = 0;
@@ -118,13 +124,13 @@ public class ShiftApp {
                 EmployeeInfo emp = createBasicEmployee(empId);
                 employeeInfo.put(empId, emp);
                 created++;
-                System.out.println("   ✅ Created basic employee: " + emp.getName() + " (" + empId + ")");
+                LOG.debug("   Γ£à Created basic employee: " + emp.getName() + " (" + empId + ")");
             } else {
-                System.out.println("   ℹ️ Employee already exists: " + employeeInfo.get(empId).getName() + " (" + empId + ")");
+                LOG.debug("   Γä╣∩╕Å Employee already exists: " + employeeInfo.get(empId).getName() + " (" + empId + ")");
             }
         }
 
-        System.out.println("✅ Created " + created + " new employees, total: " + employeeInfo.size());
+        LOG.debug("Γ£à Created " + created + " new employees, total: " + employeeInfo.size());
     }
 
     private static void syncAllEmployeesToDatabase() {
@@ -144,24 +150,24 @@ public class ShiftApp {
         // Load assignments from file FIRST
         loadAssignments();
 
-        System.out.println("🚀 ShiftApp started - Manual shift assignment mode enabled");
-        System.out.println("📊 Loaded assignments summary:");
-        System.out.println("   - Days with assignments: " + shiftAssignments.size());
-        System.out.println("   - Employee records loaded: " + employeeInfo.size());
+        LOG.debug("≡ƒÜÇ ShiftApp started - Manual shift assignment mode enabled");
+        LOG.debug("≡ƒôè Loaded assignments summary:");
+        LOG.debug("   - Days with assignments: " + shiftAssignments.size());
+        LOG.debug("   - Employee records loaded: " + employeeInfo.size());
 
         // Display loaded assignments
         displayLoadedAssignments();
 
-        System.out.println("✅ System ready. Use GET /shifts to view assignments.");
+        LOG.debug("Γ£à System ready. Use GET /shifts to view assignments.");
 
         // Load constraint configs from MySQL
         constraintConfigs = mysqlService.loadAllConstraintConfigs();
         if (constraintConfigs.isEmpty()) {
             constraintConfigs = getDefaultConstraintConfigs();
             mysqlService.insertDefaultConstraints(constraintConfigs);
-            System.out.println("📋 Inserted 11 default constraint configs");
+            LOG.debug("≡ƒôï Inserted 11 default constraint configs");
         } else {
-            System.out.println("📋 Loaded " + constraintConfigs.size() + " constraint configs from DB");
+            LOG.debug("≡ƒôï Loaded " + constraintConfigs.size() + " constraint configs from DB");
         }
 
         // Dynamically check for the 12th constraint (maximizeRating) and insert it if missing
@@ -171,7 +177,7 @@ public class ShiftApp {
             maximizeRating.setEnabled(true);
             mysqlService.saveConstraintConfig(maximizeRating);
             constraintConfigs.add(maximizeRating);
-            System.out.println("📋 Inserted maximizeRating constraint (12) dynamically");
+            LOG.debug("≡ƒôï Inserted maximizeRating constraint (12) dynamically");
         }
         
         // Load V3 constraint configs from MySQL
@@ -179,18 +185,18 @@ public class ShiftApp {
         if (constraintConfigsV3.isEmpty()) {
             constraintConfigsV3 = getDefaultConstraintConfigsV3();
             mysqlService.insertDefaultConstraintsV3(constraintConfigsV3);
-            System.out.println("📋 Inserted default V3 constraint configs");
+            LOG.debug("≡ƒôï Inserted default V3 constraint configs");
         } else {
-            System.out.println("📋 Loaded " + constraintConfigsV3.size() + " V3 constraint configs from DB");
+            LOG.debug("≡ƒôï Loaded " + constraintConfigsV3.size() + " V3 constraint configs from DB");
         }
     }
 
     private void displayLoadedAssignments() {
-        System.out.println("\n📊 Loaded Assignments Summary:");
-        System.out.println("==============================");
+        LOG.debug("\n≡ƒôè Loaded Assignments Summary:");
+        LOG.debug("==============================");
 
         if (shiftAssignments.isEmpty()) {
-            System.out.println("   No assignments loaded");
+            LOG.debug("   No assignments loaded");
             return;
         }
 
@@ -208,13 +214,13 @@ public class ShiftApp {
                 continue;
             }
 
-            System.out.println("\n📅 Date: " + date);
+            LOG.debug("\n≡ƒôà Date: " + date);
 
             for (Map.Entry<String, List<String>> shiftEntry : dayAssignments.entrySet()) {
                 String shift = shiftEntry.getKey();
                 List<String> employees = shiftEntry.getValue();
 
-                System.out.println("    " + shift + " shift: " + employees.size() + " employees");
+                LOG.debug("    " + shift + " shift: " + employees.size() + " employees");
 
                 // Count by shift
                 assignmentsByShift.put(shift, assignmentsByShift.getOrDefault(shift, 0) + employees.size());
@@ -226,30 +232,30 @@ public class ShiftApp {
                     String empId = employees.get(i);
                     EmployeeInfo emp = employeeInfo.get(empId);
                     if (emp != null) {
-                        System.out.println("      • " + emp.getName() + " (" + empId + ") - " +
+                        System.out.println("      ΓÇó " + emp.getName() + " (" + empId + ") - " +
                                 emp.getPosition() + " - " + emp.getGender());
                     } else {
-                        System.out.println("      • " + empId + " (Employee not found in system)");
+                        LOG.debug("      ΓÇó " + empId + " (Employee not found in system)");
                     }
                 }
 
                 if (employees.size() > displayLimit) {
-                    System.out.println("      ... and " + (employees.size() - displayLimit) + " more");
+                    LOG.debug("      ... and " + (employees.size() - displayLimit) + " more");
                 }
             }
         }
 
-        System.out.println("\n📈 Summary:");
-        System.out.println("   Total days with assignments: " + shiftAssignments.size());
-        System.out.println("   Total individual assignments: " + totalAssignments);
-        System.out.println("   Total employee records: " + employeeInfo.size());
+        LOG.debug("\n≡ƒôê Summary:");
+        LOG.debug("   Total days with assignments: " + shiftAssignments.size());
+        LOG.debug("   Total individual assignments: " + totalAssignments);
+        LOG.debug("   Total employee records: " + employeeInfo.size());
 
         for (Map.Entry<String, Integer> entry : assignmentsByShift.entrySet()) {
-            System.out.println("   " + entry.getKey() + " shift assignments: " + entry.getValue());
+            LOG.debug("   " + entry.getKey() + " shift assignments: " + entry.getValue());
         }
     }
     private static void initializeEmployees() {
-        System.out.println("🔄 Initializing employees on startup...");
+        LOG.debug("≡ƒöä Initializing employees on startup...");
 
         // Check if we already have employees loaded from assignments
         Set<String> employeesNeeded = new HashSet<>();
@@ -261,7 +267,7 @@ public class ShiftApp {
             }
         }
 
-        System.out.println("📋 Employee IDs found in assignments: " + employeesNeeded.size());
+        LOG.debug("≡ƒôï Employee IDs found in assignments: " + employeesNeeded.size());
 
         // Only create employees for IDs that don't exist yet
         int created = 0;
@@ -271,16 +277,16 @@ public class ShiftApp {
                 EmployeeInfo emp = createBasicEmployee(empId);
                 employeeInfo.put(empId, emp);
                 created++;
-                System.out.println("   ✅ Created employee: " + emp.getName() + " (" + empId + ") - " + emp.getGender());
+                LOG.debug("   Γ£à Created employee: " + emp.getName() + " (" + empId + ") - " + emp.getGender());
             } else {
-                System.out.println("   ℹ️ Employee already exists: " + employeeInfo.get(empId).getName() + " (" + empId + ")");
+                LOG.debug("   Γä╣∩╕Å Employee already exists: " + employeeInfo.get(empId).getName() + " (" + empId + ")");
             }
         }
 
-        System.out.println("✅ Created " + created + " new employees, total: " + employeeInfo.size());
+        LOG.debug("Γ£à Created " + created + " new employees, total: " + employeeInfo.size());
 
         // Display employee summary
-        System.out.println("\n👥 Employee Summary:");
+        LOG.debug("\n≡ƒæÑ Employee Summary:");
         for (EmployeeInfo emp : employeeInfo.values()) {
             System.out.println("   " + emp.getId() + ": " + emp.getName() +
                     " (" + emp.getGender() + ") - " + emp.getPosition());
@@ -622,7 +628,7 @@ public class ShiftApp {
         public void setParameterName2(String parameterName2) { this.parameterName2 = parameterName2; }
     }
 
-    // Static constraint config list — loaded from MySQL on startup
+    // Static constraint config list ΓÇö loaded from MySQL on startup
     private static List<ConstraintConfig> constraintConfigs = new ArrayList<>();
     private static List<ConstraintConfig> constraintConfigsV3 = new ArrayList<>();
 
@@ -727,7 +733,7 @@ public class ShiftApp {
     private static final Map<String, Map<String, List<String>>> manualAssignments = new HashMap<>(); // NEW: tracks ONLY manual assignments
     private static Map<String, Map<String, ShiftTimes>> employeeShiftTimesCache = new ConcurrentHashMap<>();
     private static final Map<String, List<LeaveRecord>> employeeLeaves = new HashMap<>();
-    private static final Map<String, EmployeeInfo> employeeInfo = new HashMap<>();
+    private static final Map<String, EmployeeInfo> employeeInfo = new ConcurrentHashMap<>();
 
     // Track if we need to generate new shifts
     private static boolean shiftsGenerated = false;
@@ -736,19 +742,19 @@ public class ShiftApp {
     private static SystemConfig systemConfig = new SystemConfig();
 
     // Store attendance configurations
-    private static final Map<String, AttendanceConfig> attendanceConfigs = new HashMap<>();
+    private static final Map<String, AttendanceConfig> attendanceConfigs = new ConcurrentHashMap<>();
 
     // Overtime tracking
-    private static final Map<String, OvertimeRecord> overtimeRecords = new HashMap<>();
+    private static final Map<String, OvertimeRecord> overtimeRecords = new ConcurrentHashMap<>();
 
     // Compliance violations tracking
     private static final List<ComplianceViolation> complianceViolations = new ArrayList<>();
 
     // NEW: Leave Coverage Requests tracking
-    private static final Map<String, LeaveCoverageRequest> leaveCoverageRequests = new HashMap<>();
+    private static final Map<String, LeaveCoverageRequest> leaveCoverageRequests = new ConcurrentHashMap<>();
 
     // NEW: OT Assignments for leave coverage
-    private static final Map<String, OTCoverageAssignment> otCoverageAssignments = new HashMap<>();
+    private static final Map<String, OTCoverageAssignment> otCoverageAssignments = new ConcurrentHashMap<>();
 
     // NEW: MySQL Service for database synchronization
     private static MySQLService mysqlService;
@@ -1721,9 +1727,9 @@ public class ShiftApp {
             // Use custom threshold if provided, otherwise use default
             double thresholdToUse = customSkillThreshold > 0 ? customSkillThreshold : this.skillThreshold;
 
-            System.out.println("🔍 Looking for suitable employees with skill threshold: " + thresholdToUse + "%");
-            System.out.println("   Absent employee: " + absentEmp.getName() + " (" + absentEmp.getDepartment() + ")");
-            System.out.println("   Required skills: " + absentEmp.getSkills());
+            LOG.debug("≡ƒöì Looking for suitable employees with skill threshold: " + thresholdToUse + "%");
+            LOG.debug("   Absent employee: " + absentEmp.getName() + " (" + absentEmp.getDepartment() + ")");
+            LOG.debug("   Required skills: " + absentEmp.getSkills());
 
             for (EmployeeInfo emp : employeeInfo.values()) {
                 // Skip absent employee
@@ -1734,19 +1740,19 @@ public class ShiftApp {
                 // Calculate skill similarity score
                 double skillScore = emp.calculateSkillSimilarity(absentEmp);
 
-                System.out.println("   Checking " + emp.getName() + " (" + emp.getDepartment() + "):");
-                System.out.println("     - Skills: " + emp.getSkills());
-                System.out.println("     - Skill similarity: " + String.format("%.1f%%", skillScore));
+                LOG.debug("   Checking " + emp.getName() + " (" + emp.getDepartment() + "):");
+                LOG.debug("     - Skills: " + emp.getSkills());
+                LOG.debug("     - Skill similarity: " + String.format("%.1f%%", skillScore));
                 
                 boolean sameDepartment = emp.getDepartment() != null && absentEmp.getDepartment() != null && 
                                          emp.getDepartment().equals(absentEmp.getDepartment());
 
-                System.out.println("     - Same department: " + sameDepartment);
-                System.out.println("     - Can work shift: " + emp.canWorkShift(shiftName));
+                LOG.debug("     - Same department: " + sameDepartment);
+                LOG.debug("     - Can work shift: " + emp.canWorkShift(shiftName));
 
                 // Check if can cover with the threshold
                 if (emp.canCoverFor(absentEmp, shiftName, thresholdToUse)) {
-                    System.out.println("     ✅ SUITABLE - Adding to list");
+                    LOG.debug("     Γ£à SUITABLE - Adding to list");
 
                     EmployeeCoverageMatch match = new EmployeeCoverageMatch(
                             emp,
@@ -1759,14 +1765,14 @@ public class ShiftApp {
 
                     matches.add(match);
                 } else {
-                    System.out.println("     ❌ NOT SUITABLE");
+                    LOG.debug("     Γ¥î NOT SUITABLE");
                 }
             }
 
             // Sort by total score (highest first)
             matches.sort((a, b) -> Double.compare(b.getTotalScore(), a.getTotalScore()));
 
-            System.out.println("✅ Found " + matches.size() + " suitable employees");
+            LOG.debug("Γ£à Found " + matches.size() + " suitable employees");
             return matches;
         }
 
@@ -2190,10 +2196,10 @@ public class ShiftApp {
         // Create data directory if it doesn't exist
         new File(dataDir).mkdirs();
 
-        System.out.println("🚀 Starting Shift Scheduler...");
-        System.out.println("🌐 Host: 0.0.0.0 (all network interfaces)");
-        System.out.println("🔌 Port: " + port);
-        System.out.println("📁 Data directory: " + dataDir);
+        LOG.debug("≡ƒÜÇ Starting Shift Scheduler...");
+        LOG.debug("≡ƒîÉ Host: 0.0.0.0 (all network interfaces)");
+        LOG.debug("≡ƒöî Port: " + port);
+        LOG.debug("≡ƒôü Data directory: " + dataDir);
 
         Quarkus.run(args);
     }
@@ -2209,29 +2215,29 @@ public class ShiftApp {
             employeeClockStatus.clear();
             attendanceRecords.clear();
             employeeBreaks.clear();
-            System.out.println("🔄 Cleared all clock status and attendance records for new shift generation");
+            LOG.debug("≡ƒöä Cleared all clock status and attendance records for new shift generation");
         }
 
         public static AttendanceRecord clockIn(String employeeId, LocalDateTime clockInTime, String scheduledShift) {
-            System.out.println("🕒 ATTEMPTING CLOCK-IN FOR: " + employeeId + " at " + clockInTime);
+            LOG.debug("≡ƒòÆ ATTEMPTING CLOCK-IN FOR: " + employeeId + " at " + clockInTime);
 
             // 1. Verify employee exists
             if (!employeeInfo.containsKey(employeeId)) {
-                System.out.println("❌ CLOCK-IN FAILED: Employee " + employeeId + " not found in system");
+                LOG.debug("Γ¥î CLOCK-IN FAILED: Employee " + employeeId + " not found in system");
                 throw new IllegalStateException("Employee " + employeeId + " not found in system");
             }
 
             // 2. Check if employee is already clocked in
             if (isClockedIn(employeeId)) {
                 EmployeeInfo empInfo = employeeInfo.get(employeeId);
-                System.out.println("❌ CLOCK-IN FAILED: " + empInfo.getName() + " (" + employeeId + ") is already clocked in");
+                LOG.debug("Γ¥î CLOCK-IN FAILED: " + empInfo.getName() + " (" + employeeId + ") is already clocked in");
                 throw new IllegalStateException("Employee " + employeeId + " is already clocked in");
             }
 
             // 3. Validate if employee has a scheduled shift for today
             if (scheduledShift == null || scheduledShift.isEmpty()) {
                 EmployeeInfo empInfo = employeeInfo.get(employeeId);
-                System.out.println("❌ CLOCK-IN FAILED: " + empInfo.getName() + " has no scheduled shift for today");
+                LOG.debug("Γ¥î CLOCK-IN FAILED: " + empInfo.getName() + " has no scheduled shift for today");
                 throw new IllegalStateException("Employee " + employeeId + " has no scheduled shift for today");
             }
 
@@ -2242,7 +2248,7 @@ public class ShiftApp {
             if (employeeLeaves.containsKey(employeeId) &&
                     employeeLeaves.get(employeeId).stream().anyMatch(lr -> lr.getDate().equals(todayStr))) {
                 EmployeeInfo empInfo = employeeInfo.get(employeeId);
-                System.out.println("❌ CLOCK-IN FAILED: " + empInfo.getName() + " is on leave today");
+                LOG.debug("Γ¥î CLOCK-IN FAILED: " + empInfo.getName() + " is on leave today");
                 throw new IllegalStateException("Employee " + employeeId + " is on leave today");
             }
 
@@ -2260,12 +2266,12 @@ public class ShiftApp {
             checkCompliance(record, employeeId);
 
             // 9. Store the record
-            attendanceRecords.computeIfAbsent(employeeId, k -> new ArrayList<>()).add(record);
+            attendanceRecords.computeIfAbsent(employeeId, k -> new java.util.concurrent.CopyOnWriteArrayList<>()).add(record);
             employeeClockStatus.put(employeeId, true);
 
             // 10. Log success
             EmployeeInfo empInfo = employeeInfo.get(employeeId);
-            System.out.println("✅ CLOCK-IN SUCCESS: " + empInfo.getName() + " (" + employeeId + ") at " + clockInTime +
+            System.out.println("Γ£à CLOCK-IN SUCCESS: " + empInfo.getName() + " (" + employeeId + ") at " + clockInTime +
                     " for " + scheduledShift + " shift" +
                     (record.isLate() ? " (LATE: " + record.getLateMinutes() + " minutes)" : ""));
 
@@ -2307,8 +2313,8 @@ public class ShiftApp {
             // Check for overtime
             checkOvertime(lastRecord, employeeId);
 
-            System.out.println("✅ Clock OUT - " + employeeId + " at " + clockOutTime);
-            System.out.println("📊 Hours worked: " + lastRecord.getHoursWorked() + " hours");
+            LOG.debug("Γ£à Clock OUT - " + employeeId + " at " + clockOutTime);
+            LOG.debug("≡ƒôè Hours worked: " + lastRecord.getHoursWorked() + " hours");
 
             // Send notification
             sendNotification(employeeId, "CLOCK_OUT", "Clocked out after " +
@@ -2323,9 +2329,9 @@ public class ShiftApp {
             }
 
             BreakRecord breakRecord = new BreakRecord(employeeId, breakStartTime);
-            employeeBreaks.computeIfAbsent(employeeId, k -> new ArrayList<>()).add(breakRecord);
+            employeeBreaks.computeIfAbsent(employeeId, k -> new java.util.concurrent.CopyOnWriteArrayList<>()).add(breakRecord);
 
-            System.out.println("⏸️ Break started for " + employeeId + " at " + breakStartTime);
+            LOG.debug("ΓÅ╕∩╕Å Break started for " + employeeId + " at " + breakStartTime);
             return breakRecord;
         }
 
@@ -2342,7 +2348,7 @@ public class ShiftApp {
 
             lastBreak.endBreak(breakEndTime);
 
-            System.out.println("⏸️ Break ended for " + employeeId + " at " + breakEndTime +
+            System.out.println("ΓÅ╕∩╕Å Break ended for " + employeeId + " at " + breakEndTime +
                     " (Duration: " + lastBreak.getDurationMinutes() + " minutes)");
             return lastBreak;
         }
@@ -2523,7 +2529,7 @@ public class ShiftApp {
                     record.setOvertimeHours(otHours);
                     record.setOvertimeRate(otRecord.getRate());
 
-                    System.out.println("💰 Overtime recorded for " + employeeId + ": " +
+                    System.out.println("≡ƒÆ░ Overtime recorded for " + employeeId + ": " +
                             otHours + " hours at " + otRecord.getRate() + "x rate");
 
                     if (systemConfig.isNotifyOTApproval() && !systemConfig.isAutoApproveOT()) {
@@ -2596,7 +2602,7 @@ public class ShiftApp {
                     description, date, shiftName);
             complianceViolations.add(violation);
 
-            System.out.println("⚠️ Compliance Violation: " + employeeId + " - " + description);
+            LOG.debug("ΓÜá∩╕Å Compliance Violation: " + employeeId + " - " + description);
 
             if (systemConfig.isNotifyComplianceViolation()) {
                 EmployeeInfo empInfo = employeeInfo.get(employeeId);
@@ -2699,7 +2705,7 @@ public class ShiftApp {
 
             // Check if employee exists
             if (!employeeInfo.containsKey(employeeId)) {
-                System.out.println("⚠️ Employee not found: " + employeeId);
+                LOG.debug("ΓÜá∩╕Å Employee not found: " + employeeId);
                 return null;
             }
 
@@ -2708,7 +2714,7 @@ public class ShiftApp {
             // Check if employee is on leave today
             if (employeeLeaves.containsKey(employeeId) &&
                     employeeLeaves.get(employeeId).stream().anyMatch(rec -> rec.getDate().equals(todayStr))) {
-                System.out.println("❌ Employee on leave: " + employeeId + " (" + empInfo.getName() + ")");
+                LOG.debug("Γ¥î Employee on leave: " + employeeId + " (" + empInfo.getName() + ")");
                 return null;
             }
 
@@ -2720,7 +2726,7 @@ public class ShiftApp {
                     List<String> assignedEmployees = entry.getValue();
 
                     if (assignedEmployees != null && assignedEmployees.contains(employeeId)) {
-                        System.out.println("✅ Found scheduled shift for " + empInfo.getName() + ": " + shift);
+                        LOG.debug("Γ£à Found scheduled shift for " + empInfo.getName() + ": " + shift);
                         return shift;
                     }
                 }
@@ -2729,7 +2735,7 @@ public class ShiftApp {
             // If no manual assignment found, fall back to default based on department
             String defaultShift = assignDefaultShiftForToday(empInfo);
             if (defaultShift != null) {
-                System.out.println("⚠️ No manual shift assigned for " + empInfo.getName() +
+                System.out.println("ΓÜá∩╕Å No manual shift assigned for " + empInfo.getName() +
                         " today, using default: " + defaultShift);
                 return defaultShift;
             }
@@ -2896,7 +2902,7 @@ public class ShiftApp {
 
         static void sendNotification(String recipientId, String type, String message) {
             // In a real system, this would send email/SMS/push notifications
-            System.out.println("📧 Notification to " + recipientId + " [" + type + "]: " + message);
+            LOG.debug("≡ƒôº Notification to " + recipientId + " [" + type + "]: " + message);
 
             // NEW: Store notification for frontend retrieval
             if (recipientId != null) {
@@ -2954,7 +2960,7 @@ public class ShiftApp {
     }
 
     // NEW: Store notifications
-    private final static Map<String, Notification> notifications = new HashMap<>();
+    private final static Map<String, Notification> notifications = new ConcurrentHashMap<>();
 
     // Enhanced Attendance Record Class
     public static class AttendanceRecord {
@@ -3151,7 +3157,7 @@ public class ShiftApp {
             }
             return Response.ok(systemConfig).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get system config"))
                     .build();
@@ -3200,10 +3206,10 @@ public class ShiftApp {
                 mysqlService.saveSystemConfig(systemConfig);
             }
             
-            System.out.println("✅ System configuration updated and saved to DB");
+            LOG.debug("Γ£à System configuration updated and saved to DB");
             return Response.ok(systemConfig).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Failed to update config: " + e.getMessage()))
                     .build();
@@ -3221,10 +3227,10 @@ public class ShiftApp {
             // Sync the new employee to MySQL
             syncAllEmployeesToDatabase();
             
-            System.out.println("✅ Added employee and synced to DB: " + employee.getName());
+            LOG.debug("Γ£à Added employee and synced to DB: " + employee.getName());
             return Response.ok(Map.of("status", "success", "employee", employee)).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Failed to add employee: " + e.getMessage()))
                     .build();
@@ -3250,13 +3256,13 @@ public class ShiftApp {
                 map.put("phone", empInfo.getPhone());
                 map.put("skills", new ArrayList<>(empInfo.getSkills()));
                 map.put("shiftColor", empInfo.getShiftColor());
-                map.put("performanceRating", empInfo.getPerformanceRating()); // ← ADD THIS LINE
+                map.put("performanceRating", empInfo.getPerformanceRating()); // ΓåÉ ADD THIS LINE
 
                 employeeList.add(map);
             }
             return Response.ok(employeeList).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get employees"))
                     .build();
@@ -3270,10 +3276,10 @@ public class ShiftApp {
     public Response updateAttendanceConfig(AttendanceConfig config) {
         try {
             attendanceConfigs.put(config.getEmployeeId(), config);
-            System.out.println("✅ Updated attendance config for: " + config.getEmployeeId());
+            LOG.debug("Γ£à Updated attendance config for: " + config.getEmployeeId());
             return Response.ok(Map.of("status", "success", "config", config)).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Failed to update config: " + e.getMessage()))
                     .build();
@@ -3289,8 +3295,8 @@ public class ShiftApp {
             String todayStr = today.toString();
             LocalTime currentTime = LocalTime.now();
 
-            System.out.println("🕒 Current time: " + currentTime);
-            System.out.println("📅 Today: " + todayStr);
+            LOG.debug("≡ƒòÆ Current time: " + currentTime);
+            LOG.debug("≡ƒôà Today: " + todayStr);
 
             List<Map<String, Object>> availableEmployees = new ArrayList<>();
 
@@ -3299,7 +3305,7 @@ public class ShiftApp {
                 EmployeeInfo empInfo = entry.getValue();
 
                 if (empInfo == null) {
-                    System.out.println("⚠️ Employee info not found for ID: " + employeeId);
+                    LOG.debug("ΓÜá∩╕Å Employee info not found for ID: " + employeeId);
                     continue;
                 }
 
@@ -3308,7 +3314,7 @@ public class ShiftApp {
                         employeeLeaves.get(employeeId).stream().anyMatch(lr -> lr.getDate().equals(todayStr));
 
                 if (isOnLeave) {
-                    System.out.println("❌ " + empInfo.getName() + " (" + employeeId + ") is on leave");
+                    LOG.debug("Γ¥î " + empInfo.getName() + " (" + employeeId + ") is on leave");
                     continue;
                 }
 
@@ -3316,7 +3322,7 @@ public class ShiftApp {
                 String scheduledShift = shiftAssignments.get(employeeId).toString();
 
                 if (scheduledShift == null) {
-                    System.out.println("❌ " + empInfo.getName() + " (" + employeeId + ") has no scheduled shift");
+                    LOG.debug("Γ¥î " + empInfo.getName() + " (" + employeeId + ") has no scheduled shift");
                     continue;
                 }
 
@@ -3324,20 +3330,20 @@ public class ShiftApp {
                 boolean isClockedIn = AttendanceService.isClockedIn(employeeId);
 
                 if (isClockedIn) {
-                    System.out.println("❌ " + empInfo.getName() + " (" + employeeId + ") is already clocked in");
+                    LOG.debug("Γ¥î " + empInfo.getName() + " (" + employeeId + ") is already clocked in");
                     continue;
                 }
 
                 // Check gender restrictions
                 if (!empInfo.canWorkShift(scheduledShift)) {
-                    System.out.println("❌ " + empInfo.getName() + " cannot work " + scheduledShift + " shift due to restrictions");
+                    LOG.debug("Γ¥î " + empInfo.getName() + " cannot work " + scheduledShift + " shift due to restrictions");
                     continue;
                 }
 
                 // Get shift times
                 ShiftTime shiftTime = SHIFT_TIMES.get(scheduledShift);
                 if (shiftTime == null) {
-                    System.out.println("❌ " + empInfo.getName() + " has invalid shift: " + scheduledShift);
+                    LOG.debug("Γ¥î " + empInfo.getName() + " has invalid shift: " + scheduledShift);
                     continue;
                 }
 
@@ -3356,7 +3362,7 @@ public class ShiftApp {
                     isShiftActive = currentTime.isAfter(earliestClockIn) && currentTime.isBefore(shiftEnd);
                 }
 
-                System.out.println("👤 Checking " + empInfo.getName() + " (" + employeeId + ")" +
+                System.out.println("≡ƒæñ Checking " + empInfo.getName() + " (" + employeeId + ")" +
                         " | Shift: " + scheduledShift +
                         " | Time: " + shiftStart + "-" + shiftEnd +
                         " | Active: " + isShiftActive);
@@ -3397,12 +3403,12 @@ public class ShiftApp {
                     empData.put("showLateInUI", lateMinutes > 0); // Show in UI if any lateness
 
                     availableEmployees.add(empData);
-                    System.out.println("✅ " + empInfo.getName() + " (" + employeeId + ") is available for clock-in" +
+                    System.out.println("Γ£à " + empInfo.getName() + " (" + employeeId + ") is available for clock-in" +
                             (lateMinutes > 0 ? " (Late: " + lateMinutes + " minutes)" : ""));
                 }
             }
 
-            System.out.println("📋 Total available employees: " + availableEmployees.size());
+            LOG.debug("≡ƒôï Total available employees: " + availableEmployees.size());
 
             return Response.ok(Map.of(
                     "date", todayStr,
@@ -3412,7 +3418,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get available employees: " + e.getMessage()))
                     .build();
@@ -3439,12 +3445,12 @@ public class ShiftApp {
             LocalDate today = clockInTime.toLocalDate();
             String todayStr = today.toString();
 
-            System.out.println("🔍 Attempting clock-in for: " + employeeId + " on " + todayStr);
+            LOG.debug("≡ƒöì Attempting clock-in for: " + employeeId + " on " + todayStr);
 
             // 1. Check if employee exists
             EmployeeInfo empInfo = employeeInfo.get(employeeId);
             if (empInfo == null) {
-                System.out.println("❌ Employee not found: " + employeeId);
+                LOG.debug("Γ¥î Employee not found: " + employeeId);
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Employee not found: " + employeeId))
                         .build();
@@ -3453,7 +3459,7 @@ public class ShiftApp {
             // 2. Check if employee is on leave today
             if (employeeLeaves.containsKey(employeeId) &&
                     employeeLeaves.get(employeeId).stream().anyMatch(lr -> lr.getDate().equals(todayStr))) {
-                System.out.println("❌ Employee on leave: " + employeeId + " on " + todayStr);
+                LOG.debug("Γ¥î Employee on leave: " + employeeId + " on " + todayStr);
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Employee is on leave today"))
                         .build();
@@ -3465,19 +3471,19 @@ public class ShiftApp {
             if (scheduledShift == null) {
                 // If no shift assigned, check if this is a new day and assign a default shift
                 scheduledShift = assignDefaultShift(employeeId, empInfo);
-                shiftAssignments.computeIfAbsent(todayStr, k -> new HashMap<>())
-                        .computeIfAbsent(scheduledShift, k -> new ArrayList<>())
+                shiftAssignments.computeIfAbsent(todayStr, k -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(scheduledShift, k -> new java.util.concurrent.CopyOnWriteArrayList<>())
                         .add(employeeId);
 
                 syncAllEmployeesToDatabase();
-                System.out.println("⚠️ No shift found, assigned default: " + scheduledShift);
+                LOG.debug("ΓÜá∩╕Å No shift found, assigned default: " + scheduledShift);
             }
 
-            System.out.println("✅ Found scheduled shift for " + employeeId + ": " + scheduledShift);
+            LOG.debug("Γ£à Found scheduled shift for " + employeeId + ": " + scheduledShift);
 
             // 4. Check if already clocked in
             if (AttendanceService.isClockedIn(employeeId)) {
-                System.out.println("❌ Already clocked in: " + employeeId);
+                LOG.debug("Γ¥î Already clocked in: " + employeeId);
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Employee is already clocked in"))
                         .build();
@@ -3486,7 +3492,7 @@ public class ShiftApp {
             // 5. Validate the shift
             ShiftTime shiftTime = SHIFT_TIMES.get(scheduledShift);
             if (shiftTime == null) {
-                System.out.println("❌ Invalid shift type: " + scheduledShift);
+                LOG.debug("Γ¥î Invalid shift type: " + scheduledShift);
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Invalid shift type: " + scheduledShift))
                         .build();
@@ -3494,7 +3500,7 @@ public class ShiftApp {
 
             // 6. Check gender restrictions
             if (!empInfo.canWorkShift(scheduledShift)) {
-                System.out.println("❌ Employee cannot work this shift due to restrictions");
+                LOG.debug("Γ¥î Employee cannot work this shift due to restrictions");
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Employee cannot work " + scheduledShift + " shift due to restrictions"))
                         .build();
@@ -3526,11 +3532,11 @@ public class ShiftApp {
                     "Clocked in successfully (On time)";
             response.put("message", message);
 
-            System.out.println("✅ Clock-in successful for " + employeeId);
+            LOG.debug("Γ£à Clock-in successful for " + employeeId);
                         return Response.ok(response).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage()))
                     .build();
@@ -3564,7 +3570,7 @@ public class ShiftApp {
             }
         }
 
-        System.out.println("Assigned default shift " + shift + " to " + employeeId);
+        LOG.debug("Assigned default shift " + shift + " to " + employeeId);
         return shift;
     }
 
@@ -3575,7 +3581,7 @@ public class ShiftApp {
         // First, check if employee is on leave today
         if (employeeLeaves.containsKey(employeeId) &&
                 employeeLeaves.get(employeeId).contains(dateStr)) {
-            System.out.println("Employee " + employeeId + " is on leave today: " + dateStr);
+            LOG.debug("Employee " + employeeId + " is on leave today: " + dateStr);
             return null;
         }
 
@@ -3589,13 +3595,13 @@ public class ShiftApp {
                 List<String> employeesInShift = entry.getValue();
 
                 if (employeesInShift != null && employeesInShift.contains(employeeId)) {
-                    System.out.println("Found shift in shiftAssignments for " + employeeId + " on " + dateStr + ": " + shift);
+                    LOG.debug("Found shift in shiftAssignments for " + employeeId + " on " + dateStr + ": " + shift);
                     return shift;
                 }
             }
         }
 
-        System.out.println("No shift found for " + employeeId + " on " + dateStr);
+        LOG.debug("No shift found for " + employeeId + " on " + dateStr);
         return null;
     }
 
@@ -3643,7 +3649,7 @@ public class ShiftApp {
             return Response.ok(response).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get shift info"))
                     .build();
@@ -3695,7 +3701,7 @@ public class ShiftApp {
             return Response.ok(response).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage()))
                     .build();
@@ -3730,7 +3736,7 @@ public class ShiftApp {
             return Response.ok(response).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage()))
                     .build();
@@ -3766,7 +3772,7 @@ public class ShiftApp {
             return Response.ok(response).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", e.getMessage()))
                     .build();
@@ -3798,7 +3804,7 @@ public class ShiftApp {
 
             return Response.ok(summary).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get overtime records"))
                     .build();
@@ -3829,7 +3835,7 @@ public class ShiftApp {
             boolean approved = record.approve(approverId);
 
             if (approved) {
-                System.out.println("✅ Overtime approved: " + otId + " by " + approverId);
+                LOG.debug("Γ£à Overtime approved: " + otId + " by " + approverId);
 
                 if (systemConfig.isNotifyOTApproval()) {
                     sendNotification(record.getEmployeeId(),
@@ -3850,7 +3856,7 @@ public class ShiftApp {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Failed to approve overtime: " + e.getMessage()))
                     .build();
@@ -3889,7 +3895,7 @@ public class ShiftApp {
 
             return Response.ok(summary).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get compliance violations"))
                     .build();
@@ -3925,7 +3931,7 @@ public class ShiftApp {
             boolean resolved = violation.resolve(resolutionNotes);
 
             if (resolved) {
-                System.out.println("✅ Compliance violation resolved: " + violationId);
+                LOG.debug("Γ£à Compliance violation resolved: " + violationId);
 
                 if (systemConfig.isNotifyComplianceViolation()) {
                     EmployeeInfo empInfo = employeeInfo.get(violation.getEmployeeId());
@@ -3949,7 +3955,7 @@ public class ShiftApp {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Failed to resolve violation: " + e.getMessage()))
                     .build();
@@ -3994,7 +4000,7 @@ public class ShiftApp {
             return Response.ok(shiftInfo).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get today's shift"))
                     .build();
@@ -4035,7 +4041,7 @@ public class ShiftApp {
                     "totalClockedIn", clockedInEmployees.size()
             )).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get clock status"))
                     .build();
@@ -4065,7 +4071,7 @@ public class ShiftApp {
                     "employeeColor", empInfo != null ? empInfo.getShiftColor() : "#607D8B"
             )).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get employee clock status"))
                     .build();
@@ -4143,7 +4149,7 @@ public class ShiftApp {
 
             return Response.ok(summary).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get attendance records"))
                     .build();
@@ -4158,7 +4164,7 @@ public class ShiftApp {
             Map<String, Object> todaySummary = AttendanceService.getTodayAttendanceSummary();
             return Response.ok(todaySummary).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get today's attendance"))
                     .build();
@@ -4189,7 +4195,7 @@ public class ShiftApp {
             // Clear MySQL
             mysqlService.clearAllDatabase();
 
-            System.out.println("🗑️ Cleared all " + daysCleared + " days of assignments (" +
+            System.out.println("≡ƒùæ∩╕Å Cleared all " + daysCleared + " days of assignments (" +
                     totalAssignments + " total assignments) from Memory and MySQL");
 
             return Response.ok(Map.of(
@@ -4201,7 +4207,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(500).entity(Map.of(
                     "error", "Failed to clear all assignments: " + e.getMessage()
             )).build();
@@ -4213,8 +4219,8 @@ public class ShiftApp {
     @Produces(MediaType.APPLICATION_JSON)
     public Response removeAssignment(Map<String, Object> input) {
         try {
-            System.out.println("=== DELETE /shifts/clear ===");
-            System.out.println("Input: " + input);
+            LOG.debug("=== DELETE /shifts/clear ===");
+            LOG.debug("Input: " + input);
 
             // ============ PARSE INPUT - Handle all formats ============
             Object daysObj = input.get("days");
@@ -4292,18 +4298,18 @@ public class ShiftApp {
             if (employeesObj == null) {
                 // No employees specified = clear entire shift
                 clearEntireShift = true;
-                System.out.println("📋 No employees specified - will clear entire shift(s)");
+                LOG.debug("≡ƒôï No employees specified - will clear entire shift(s)");
             } else if (employeesObj instanceof String) {
                 String empStr = (String) employeesObj;
                 if ("ALL".equalsIgnoreCase(empStr) || "*".equals(empStr)) {
                     clearEntireShift = true;
-                    System.out.println("📋 'ALL' keyword detected - will clear entire shift(s)");
+                    LOG.debug("≡ƒôï 'ALL' keyword detected - will clear entire shift(s)");
                 } else {
                     employeesToRemove.add(empStr);
                 }
             } else if (employeesObj instanceof List) {
                 employeesToRemove = (List<String>) employeesObj;
-                System.out.println("📋 Will remove specific employees: " + employeesToRemove);
+                LOG.debug("≡ƒôï Will remove specific employees: " + employeesToRemove);
             } else {
                 return Response.status(Response.Status.BAD_REQUEST)
                         .entity(Map.of("error", "Invalid format for 'employees'. Must be string, array, or omitted"))
@@ -4395,7 +4401,7 @@ public class ShiftApp {
                                 "action", "CLEARED_ENTIRE_SHIFT"
                         ));
 
-                        System.out.println("🗑️ Cleared entire " + shift + " shift on " + day +
+                        System.out.println("≡ƒùæ∩╕Å Cleared entire " + shift + " shift on " + day +
                                 " (" + removedFromShift + " employees) from JSON");
                     }
                     // ============ CASE 2: Remove specific employees ============
@@ -4404,7 +4410,7 @@ public class ShiftApp {
                             if (currentList.remove(empId)) {
                                 removedFromShift++;
                                 actuallyRemoved.add(empId);
-                                System.out.println("    ✅ Removed employee " + empId + " from " + shift + " on " + day + " (JSON)");
+                                LOG.debug("    Γ£à Removed employee " + empId + " from " + shift + " on " + day + " (JSON)");
                             } else {
                                 notFound.add(empId);
                             }
@@ -4453,7 +4459,7 @@ public class ShiftApp {
                     totalDaysCleared++;
                     datesToClearFromMySQL.add(day);
                     dayResult.put("day_cleared", true);
-                    System.out.println("  Day " + day + " has no shifts left, removed day entry");
+                    LOG.debug("  Day " + day + " has no shifts left, removed day entry");
                 }
 
                 dayResult.put("shifts", shiftResults);
@@ -4478,7 +4484,7 @@ public class ShiftApp {
             if (!datesToClearFromMySQL.isEmpty()) {
                 for (String date : datesToClearFromMySQL) {
                     mysqlService.clearAssignmentsForDate(date);
-                    System.out.println("🗑️ Cleared MySQL for empty date: " + date);
+                    LOG.debug("≡ƒùæ∩╕Å Cleared MySQL for empty date: " + date);
                 }
             }
 
@@ -4508,11 +4514,11 @@ public class ShiftApp {
 
             response.put("message", message.toString());
 
-            System.out.println("✅ Removal complete: " + message);
+            LOG.debug("Γ£à Removal complete: " + message);
             return Response.ok(response).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to remove assignments: " + e.getMessage()))
                     .build();
@@ -4525,7 +4531,7 @@ public class ShiftApp {
     public Response removeEmployees(Map<String, Object> input) {
         Object employeesObj = input.get("employees"); // Can be String (single) or List<String> (multiple)
 
-        System.out.println("🗑️ Removing employee records...");
+        LOG.debug("≡ƒùæ∩╕Å Removing employee records...");
 
         // ============ OPTION A: Clear ALL employees (if employees field is omitted) ============
         if (employeesObj == null) {
@@ -4538,7 +4544,7 @@ public class ShiftApp {
             
             syncAllEmployeesToDatabase(); // Save to persist the empty state (now optional)
 
-            System.out.println("🗑️ Cleared ALL employee records (" + removedCount + " employees)");
+            LOG.debug("≡ƒùæ∩╕Å Cleared ALL employee records (" + removedCount + " employees)");
 
             return Response.ok(Map.of(
                     "status", "success",
@@ -4559,7 +4565,7 @@ public class ShiftApp {
             
             syncAllEmployeesToDatabase();
 
-            System.out.println("🗑️ Cleared ALL employee records using 'ALL' keyword (" + removedCount + " employees)");
+            LOG.debug("≡ƒùæ∩╕Å Cleared ALL employee records using 'ALL' keyword (" + removedCount + " employees)");
 
             return Response.ok(Map.of(
                     "status", "success",
@@ -4577,11 +4583,11 @@ public class ShiftApp {
         if (employeesObj instanceof String) {
             // Single employee as string
             employeesToRemove = Collections.singletonList((String) employeesObj);
-            System.out.println("  Removing single employee: " + employeesObj);
+            LOG.debug("  Removing single employee: " + employeesObj);
         } else if (employeesObj instanceof List) {
             // Multiple employees as list
             employeesToRemove = (List<String>) employeesObj;
-            System.out.println("  Removing " + employeesToRemove.size() + " employees: " + employeesToRemove);
+            LOG.debug("  Removing " + employeesToRemove.size() + " employees: " + employeesToRemove);
         } else {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of(
@@ -4605,10 +4611,10 @@ public class ShiftApp {
                 mysqlService.removeAssignmentsForEmployee(empId);
                 
                 removed.add(empId);
-                System.out.println("    ✅ Removed employee: " + empId);
+                LOG.debug("    Γ£à Removed employee: " + empId);
             } else {
                 notFound.add(empId);
-                System.out.println("    ❌ Employee not found: " + empId);
+                LOG.debug("    Γ¥î Employee not found: " + empId);
             }
         }
 
@@ -4634,7 +4640,7 @@ public class ShiftApp {
 
         response.put("remainingCount", employeeInfo.size());
 
-        System.out.println("✅ Employee removal complete. Remaining: " + employeeInfo.size());
+        LOG.debug("Γ£à Employee removal complete. Remaining: " + employeeInfo.size());
         return Response.ok(response).build();
     }
 
@@ -4657,7 +4663,7 @@ public class ShiftApp {
                 boolean removed = employees.removeAll(employeeIds);
                 if (removed) {
                     removedCount++;
-                    System.out.println("  Removed employee from " + date + " " + shift + " shift");
+                    LOG.debug("  Removed employee from " + date + " " + shift + " shift");
                 }
             }
         }
@@ -4688,7 +4694,7 @@ public class ShiftApp {
 
             for (String emptyShift : emptyShifts) {
                 shifts.remove(emptyShift);
-                System.out.println("  Removed empty shift: " + emptyShift + " on " + date);
+                LOG.debug("  Removed empty shift: " + emptyShift + " on " + date);
             }
 
             // If day has no shifts, mark for removal
@@ -4700,7 +4706,7 @@ public class ShiftApp {
         // Remove empty dates
         for (String emptyDate : emptyDates) {
             shiftAssignments.remove(emptyDate);
-            System.out.println("  Removed empty date: " + emptyDate);
+            LOG.debug("  Removed empty date: " + emptyDate);
         }
     }
 
@@ -4716,7 +4722,7 @@ public class ShiftApp {
 
         syncAllEmployeesToDatabase();
 
-        System.out.println("🗑️ Cleared ALL employee records and ALL shift assignments (" + removedCount + " employees)");
+        LOG.debug("≡ƒùæ∩╕Å Cleared ALL employee records and ALL shift assignments (" + removedCount + " employees)");
 
         return Response.ok(Map.of(
                 "status", "success",
@@ -4773,8 +4779,8 @@ public class ShiftApp {
 
     public Response manualAssignShifts(Map<String, Object> input) {
         try {
-            System.out.println("=== POST /shifts/manual-assign ===");
-            System.out.println("Input: " + input);
+            LOG.debug("=== POST /shifts/manual-assign ===");
+            LOG.debug("Input: " + input);
 
             // ============ VALIDATE REQUIRED FIELDS ============
             String date = (String) input.get("date");
@@ -4883,7 +4889,7 @@ public class ShiftApp {
                     skipped.put("reason", "Already assigned on " + date);
                     skippedEmployees.add(skipped);
                     skipCount++;
-                    System.out.println("⏭️ Skipping " + empName + " (" + empId + ") - already assigned on " + date);
+                    LOG.debug("ΓÅ¡∩╕Å Skipping " + empName + " (" + empId + ") - already assigned on " + date);
                     continue;
                 }
 
@@ -4899,7 +4905,7 @@ public class ShiftApp {
                             "employee_id", empId,
                             "name", empInfo.getName()
                     ));
-                    System.out.println("🆕 Created new employee: " + empInfo.getName() + " (" + empId + ")");
+                    LOG.debug("≡ƒåò Created new employee: " + empInfo.getName() + " (" + empId + ")");
                 }
 
                 // Add to shift assignments (JSON)
@@ -4936,11 +4942,11 @@ public class ShiftApp {
                             endTime
                     );
                     mysqlSyncCount++;
-                    System.out.println("✅ Synced to MySQL with NULLs: " + empId);
+                    LOG.debug("Γ£à Synced to MySQL with NULLs: " + empId);
 
                 } catch (Exception e) {
-                    System.err.println("❌ MySQL sync failed for " + empId + ": " + e.getMessage());
-                    e.printStackTrace();
+                    LOG.error("Γ¥î MySQL sync failed for " + empId + ": " + e.getMessage());
+                    LOG.error("Exception caught", e);
                 }
 
 
@@ -4954,7 +4960,7 @@ public class ShiftApp {
                 assignedEmployees.add(assigned);
 
                 successCount++;
-                System.out.println("✅ Assigned " + empName + " (" + empId + ") to " + shift + " shift on " + date);
+                LOG.debug("Γ£à Assigned " + empName + " (" + empId + ") to " + shift + " shift on " + date);
             }
 
             // Sync any new employees to DB
@@ -4973,7 +4979,7 @@ public class ShiftApp {
                 errorResponse.put("skipped_employees", skippedEmployees);
                 errorResponse.put("note", "Manual mode: Only employee_id, name, and gender are shown in response");
 
-                System.out.println("\n❌ Manual Assignment Failed - All employees already assigned!");
+                LOG.debug("\nΓ¥î Manual Assignment Failed - All employees already assigned!");
                 return Response.status(Response.Status.CONFLICT)
                         .entity(errorResponse)
                         .build();
@@ -5010,17 +5016,17 @@ public class ShiftApp {
 
             response.put("note", "Manual mode: Only employee_id, name, and gender are shown. Rating and category are stored in MySQL but not displayed.");
 
-            System.out.println("\n✅ Manual Assignment Complete!");
-            System.out.println("   - Total requested: " + employees.size());
-            System.out.println("   - Successfully assigned: " + successCount);
-            System.out.println("   - Skipped: " + skipCount);
-            System.out.println("   - New employees: " + newEmployeeCount);
-            System.out.println("   - MySQL sync: " + mysqlSyncCount + " records added");
+            LOG.debug("\nΓ£à Manual Assignment Complete!");
+            LOG.debug("   - Total requested: " + employees.size());
+            LOG.debug("   - Successfully assigned: " + successCount);
+            LOG.debug("   - Skipped: " + skipCount);
+            LOG.debug("   - New employees: " + newEmployeeCount);
+            LOG.debug("   - MySQL sync: " + mysqlSyncCount + " records added");
 
             return Response.ok(response).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of(
                             "error", "Manual assignment failed: " + e.getMessage()
@@ -5068,8 +5074,8 @@ public class ShiftApp {
     @Produces(MediaType.APPLICATION_JSON)
     public Response assignShiftsWithBreaks(Map<String, Object> input) {
         try {
-            System.out.println("=== POST /shifts/assign  ===");
-            System.out.println("Input: " + input);
+            LOG.debug("=== POST /shifts/assign  ===");
+            LOG.debug("Input: " + input);
 
             // ============ VALIDATION FIRST ============
             @SuppressWarnings("unchecked")
@@ -5115,7 +5121,7 @@ public class ShiftApp {
                             .build();
                 }
 
-                System.out.println("✅ Validation passed: All " + existingUsers.size() + " employee IDs are unique");
+                LOG.debug("Γ£à Validation passed: All " + existingUsers.size() + " employee IDs are unique");
             }
 
             // 1. Parse input
@@ -5180,8 +5186,8 @@ public class ShiftApp {
                 shiftDurationHours = Duration.between(startLocalTime, endLocalTime).toMinutes() / 60.0;
             }
 
-            System.out.println("Shift: " + startTime + " to " + endTime);
-            System.out.println("Calculated duration: " + shiftDurationHours + " hours");
+            LOG.debug("Shift: " + startTime + " to " + endTime);
+            LOG.debug("Calculated duration: " + shiftDurationHours + " hours");
 
             // Check if shift duration allows for break
             if (scheduleBreaks && shiftDurationHours < (breakAfterHours + (breakDurationMinutes / 60.0))) {
@@ -5222,11 +5228,11 @@ public class ShiftApp {
                 String employeeId;
                 if (existingEmployeeId != null && !existingEmployeeId.trim().isEmpty()) {
                     employeeId = existingEmployeeId;
-                    System.out.println("📌 Using provided employee ID: " + employeeId + " for " + name);
+                    LOG.debug("≡ƒôî Using provided employee ID: " + employeeId + " for " + name);
                 } else {
                     EmployeeInfo existing = findExistingEmployee(name, role);
                     employeeId = (existing != null) ? existing.getId() : "EMP" + String.format("%03d", empCounter++);
-                    System.out.println("🆕 Generated new employee ID: " + employeeId + " for " + name);
+                    LOG.debug("≡ƒåò Generated new employee ID: " + employeeId + " for " + name);
                 }
 
                 // Calculate hourly wage
@@ -5267,7 +5273,7 @@ public class ShiftApp {
                 empInfo.setCategory(employeeType);
                 allEmployees.put(employeeId, empInfo);
 
-                System.out.println("👤 Employee: " + name + " (" + employeeId + ") - Type: " + employeeType +
+                System.out.println("≡ƒæñ Employee: " + name + " (" + employeeId + ") - Type: " + employeeType +
                         ", Rating: " + performanceRating + ", Wage: $" + String.format("%.2f", hourlyWage) + "/hr");
             }
 
@@ -5303,7 +5309,7 @@ public class ShiftApp {
             }
 
             // ============ CHECK EXISTING ASSIGNMENTS PER DATE ============
-            System.out.println("\n🔍 Checking for existing assignments in date range...");
+            LOG.debug("\n≡ƒöì Checking for existing assignments in date range...");
 
             // Build a map of employee+date -> shift for quick lookup
             Map<String, String> employeeExistingAssignments = new HashMap<>(); // key: empId-date
@@ -5314,12 +5320,12 @@ public class ShiftApp {
                 Map<String, List<String>> dayAssignments = shiftAssignments.get(dateStr);
 
                 if (dayAssignments != null) {
-                    System.out.println("📅 Found existing assignments for " + dateStr + ":");
+                    LOG.debug("≡ƒôà Found existing assignments for " + dateStr + ":");
                     for (Map.Entry<String, List<String>> entry : dayAssignments.entrySet()) {
                         String shift = entry.getKey();
                         List<String> employees = entry.getValue();
 
-                        System.out.println("   - " + shift + " shift: " + employees.size() + " employees");
+                        LOG.debug("   - " + shift + " shift: " + employees.size() + " employees");
 
                         for (String empId : employees) {
                             String key = empId + "-" + dateStr;
@@ -5337,7 +5343,7 @@ public class ShiftApp {
             // Manual sort by rating/wage removed. The Timefold AI solver 
             // is now entirely responsible for selecting the optimal candidates.
 
-            System.out.println("\n📊 Employee priority order (for cost optimization):");
+            LOG.debug("\n≡ƒôè Employee priority order (for cost optimization):");
             for (EmployeeInfo emp : sortedEmployees) {
                 System.out.println("   " + emp.getName() + " - Type: " + emp.getEmployeeType() +
                         ", Rating: " + emp.getPerformanceRating() + ", Wage: $" + emp.getHourlyWage());
@@ -5492,33 +5498,33 @@ public class ShiftApp {
                 }
             }
 
-            System.out.println("\n📊 Planning summary:");
-            System.out.println("   Total possible assignments: " + totalPossibleAssignments);
-            System.out.println("   Entities to plan: " + planningEntities.size());
-            System.out.println("   Skipped due to constraints: " + skippedCount);
-            System.out.println("   Schedule Breaks: " + scheduleBreaks);
+            LOG.debug("\n≡ƒôè Planning summary:");
+            LOG.debug("   Total possible assignments: " + totalPossibleAssignments);
+            LOG.debug("   Entities to plan: " + planningEntities.size());
+            LOG.debug("   Skipped due to constraints: " + skippedCount);
+            LOG.debug("   Schedule Breaks: " + scheduleBreaks);
 
             // Show available employees per date
-            System.out.println("\n✅ Available employees per date:");
+            LOG.debug("\nΓ£à Available employees per date:");
             for (LocalDate date : workingDates) {
                 String dateStr = date.toString();
                 Set<String> available = availableEmployeesPerDate.get(dateStr);
-                System.out.println("   " + dateStr + ": " + (available != null ? available.size() : 0) + " employees available");
+                LOG.debug("   " + dateStr + ": " + (available != null ? available.size() : 0) + " employees available");
                 if (available != null && !available.isEmpty()) {
                     for (String empId : available) {
                         EmployeeInfo emp = allEmployees.get(empId);
-                        System.out.println("      • " + emp.getName() + " (" + empId + ") - " + emp.getPosition());
+                        LOG.debug("      ΓÇó " + emp.getName() + " (" + empId + ") - " + emp.getPosition());
                     }
                 }
             }
 
             // Show skipped by date
             if (!skippedPerDate.isEmpty()) {
-                System.out.println("\n⏭️ Skipped by date:");
+                LOG.debug("\nΓÅ¡∩╕Å Skipped by date:");
                 for (Map.Entry<String, List<String>> entry : skippedPerDate.entrySet()) {
-                    System.out.println("   " + entry.getKey() + ": " + entry.getValue().size() + " employees skipped");
+                    LOG.debug("   " + entry.getKey() + ": " + entry.getValue().size() + " employees skipped");
                     for (String emp : entry.getValue()) {
-                        System.out.println("      • " + emp);
+                        LOG.debug("      ΓÇó " + emp);
                     }
                 }
             }
@@ -5568,15 +5574,15 @@ public class ShiftApp {
             SolverFactory<Scheduler.ShiftSchedule> solverFactory = SolverFactory.create(solverConfig);
             Solver<Scheduler.ShiftSchedule> solver = solverFactory.buildSolver();
 
-            System.out.println("🔧 Starting solver with " + planningEntities.size() + " entities...");
-            System.out.println("   Shift: " + shiftName);
-            System.out.println("   Working days: " + workingDates.size());
-            System.out.println("   Schedule Breaks: " + scheduleBreaks);
+            LOG.debug("≡ƒöº Starting solver with " + planningEntities.size() + " entities...");
+            LOG.debug("   Shift: " + shiftName);
+            LOG.debug("   Working days: " + workingDates.size());
+            LOG.debug("   Schedule Breaks: " + scheduleBreaks);
 
             long solverStart = System.currentTimeMillis();
             Scheduler.ShiftSchedule solved = solver.solve(problem);
             long solverTimeMs = System.currentTimeMillis() - solverStart;
-            System.out.println("✅ Solver finished in " + (solverTimeMs / 1000.0) + " seconds. Score: " + solved.getScore());
+            LOG.debug("Γ£à Solver finished in " + (solverTimeMs / 1000.0) + " seconds. Score: " + solved.getScore());
 
             // Analyze the score to see exact constraint violations
             SolutionManager<Scheduler.ShiftSchedule, HardSoftLongScore> solutionManager = SolutionManager.create(solverFactory);
@@ -5869,15 +5875,15 @@ public class ShiftApp {
 
             response.put("message", message.toString());
 
-            System.out.println("\n✅ Assignment Complete!");
-            System.out.println("Total assignments: " + assignedCount);
-            System.out.println("Breaks scheduled: " + breakSchedules.size());
-            System.out.println("Skipped: " + skippedCount);
+            LOG.debug("\nΓ£à Assignment Complete!");
+            LOG.debug("Total assignments: " + assignedCount);
+            LOG.debug("Breaks scheduled: " + breakSchedules.size());
+            LOG.debug("Skipped: " + skippedCount);
 
             return Response.ok(response).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(500).entity(Map.of(
                     "error", "Optimization failed: " + e.getMessage(),
                     "stacktrace", Arrays.toString(e.getStackTrace())
@@ -5890,8 +5896,8 @@ public class ShiftApp {
     @Produces(MediaType.APPLICATION_JSON)
     public Response assignMultipleShifts(Map<String, Object> input) {
         try {
-            System.out.println("=== POST /shifts/batch-assign ===");
-            System.out.println("Input: " + input);
+            LOG.debug("=== POST /shifts/batch-assign ===");
+            LOG.debug("Input: " + input);
 
             // Parse shifts array
             @SuppressWarnings("unchecked")
@@ -5938,8 +5944,8 @@ public class ShiftApp {
 
             for (int i = 0; i < shifts.size(); i++) {
                 Map<String, Object> shift = shifts.get(i);
-                System.out.println("\n📋 Processing shift " + (i+1) + "/" + shifts.size());
-                System.out.println("   Shift Name: " + shift.get("shift_name"));
+                LOG.debug("\n≡ƒôï Processing shift " + (i+1) + "/" + shifts.size());
+                LOG.debug("   Shift Name: " + shift.get("shift_name"));
 
                 try {
                     // Process individual shift
@@ -5963,7 +5969,7 @@ public class ShiftApp {
                     errorResult.put("status", "error");
                     errorResult.put("error_message", e.getMessage());
                     shiftResults.add(errorResult);
-                    e.printStackTrace();
+                    LOG.error("Exception caught", e);
                 }
             }
 
@@ -6000,13 +6006,13 @@ public class ShiftApp {
             );
             response.put("summary", summary);
 
-            System.out.println("\n✅ Batch Assignment Complete!");
-            System.out.println(summary);
+            LOG.debug("\nΓ£à Batch Assignment Complete!");
+            LOG.debug(summary);
 
             return Response.ok(response).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(500).entity(Map.of(
                     "status", "error",
                     "error", "Batch assignment failed: " + e.getMessage(),
@@ -6071,7 +6077,7 @@ public class ShiftApp {
             workingInput.put("break_after_hours", 4);
         }
 
-        System.out.println("   Processing: " + workingInput.get("shift_name"));
+        LOG.debug("   Processing: " + workingInput.get("shift_name"));
 
         // ============ VALIDATION FIRST ============
         @SuppressWarnings("unchecked")
@@ -6115,7 +6121,7 @@ public class ShiftApp {
                 throw new Exception("Duplicate employee IDs: " + duplicateIds.keySet());
             }
 
-            System.out.println("   ✅ Validation passed: All " + existingUsers.size() + " employee IDs are unique");
+            LOG.debug("   Γ£à Validation passed: All " + existingUsers.size() + " employee IDs are unique");
         }
 
         // 1. Parse input
@@ -6168,8 +6174,8 @@ public class ShiftApp {
             shiftDurationHours = Duration.between(startLocalTime, endLocalTime).toMinutes() / 60.0;
         }
 
-        System.out.println("   Shift: " + startTime + " to " + endTime);
-        System.out.println("   Calculated duration: " + shiftDurationHours + " hours");
+        LOG.debug("   Shift: " + startTime + " to " + endTime);
+        LOG.debug("   Calculated duration: " + shiftDurationHours + " hours");
 
         // Check if shift duration allows for break - Removed per request
 
@@ -6202,11 +6208,11 @@ public class ShiftApp {
             String employeeId;
             if (existingEmployeeId != null && !existingEmployeeId.trim().isEmpty()) {
                 employeeId = existingEmployeeId;
-                System.out.println("   📌 Using provided employee ID: " + employeeId + " for " + name);
+                LOG.debug("   ≡ƒôî Using provided employee ID: " + employeeId + " for " + name);
             } else {
                 EmployeeInfo existing = findExistingEmployee(name, role);
                 employeeId = (existing != null) ? existing.getId() : "EMP" + String.format("%03d", empCounter++);
-                System.out.println("   🆕 Generated new employee ID: " + employeeId + " for " + name);
+                LOG.debug("   ≡ƒåò Generated new employee ID: " + employeeId + " for " + name);
             }
 
             // Calculate hourly wage
@@ -6247,7 +6253,7 @@ public class ShiftApp {
             empInfo.setCategory(employeeType);
             allEmployees.put(employeeId, empInfo);
 
-            System.out.println("   👤 Employee: " + name + " (" + employeeId + ") - Type: " + employeeType +
+            System.out.println("   ≡ƒæñ Employee: " + name + " (" + employeeId + ") - Type: " + employeeType +
                     ", Rating: " + performanceRating + ", Wage: $" + String.format("%.2f", hourlyWage) + "/hr");
         }
 
@@ -6283,7 +6289,7 @@ public class ShiftApp {
         }
 
         // ============ CHECK EXISTING ASSIGNMENTS PER DATE ============
-        System.out.println("\n   🔍 Checking for existing assignments in date range...");
+        LOG.debug("\n   ≡ƒöì Checking for existing assignments in date range...");
 
         // Build a map of employee+date -> shift for quick lookup
         Map<String, String> employeeExistingAssignments = new HashMap<>();
@@ -6294,12 +6300,12 @@ public class ShiftApp {
             Map<String, List<String>> dayAssignments = shiftAssignments.get(dateStr);
 
             if (dayAssignments != null) {
-                System.out.println("   📅 Found existing assignments for " + dateStr + ":");
+                LOG.debug("   ≡ƒôà Found existing assignments for " + dateStr + ":");
                 for (Map.Entry<String, List<String>> entry : dayAssignments.entrySet()) {
                     String shift = entry.getKey();
                     List<String> employees = entry.getValue();
 
-                    System.out.println("      - " + shift + " shift: " + employees.size() + " employees");
+                    LOG.debug("      - " + shift + " shift: " + employees.size() + " employees");
 
                     for (String empId : employees) {
                         String key = empId + "-" + dateStr;
@@ -6390,10 +6396,10 @@ public class ShiftApp {
             }
         }
 
-        System.out.println("\n   📊 Planning summary:");
-        System.out.println("      Total possible assignments: " + totalPossibleAssignments);
-        System.out.println("      Entities to plan: " + planningEntities.size());
-        System.out.println("      Skipped due to constraints: " + skippedCount);
+        LOG.debug("\n   ≡ƒôè Planning summary:");
+        LOG.debug("      Total possible assignments: " + totalPossibleAssignments);
+        LOG.debug("      Entities to plan: " + planningEntities.size());
+        LOG.debug("      Skipped due to constraints: " + skippedCount);
 
         // Check if ALL entities were skipped
         if (!overrideExisting && planningEntities.isEmpty()) {
@@ -6434,12 +6440,12 @@ public class ShiftApp {
         SolverFactory<Scheduler.ShiftSchedule> solverFactory = SolverFactory.create(solverConfig);
         Solver<Scheduler.ShiftSchedule> solver = solverFactory.buildSolver();
 
-        System.out.println("   🔧 Starting solver with " + planningEntities.size() + " entities...");
+        LOG.debug("   ≡ƒöº Starting solver with " + planningEntities.size() + " entities...");
 
         long solverStart = System.currentTimeMillis();
         Scheduler.ShiftSchedule solved = solver.solve(problem);
         long solverTimeMs = System.currentTimeMillis() - solverStart;
-        System.out.println("   ✅ Solver finished in " + (solverTimeMs / 1000.0) + " seconds. Score: " + solved.getScore());
+        LOG.debug("   Γ£à Solver finished in " + (solverTimeMs / 1000.0) + " seconds. Score: " + solved.getScore());
 
         // Analyze the score to see exact constraint violations
         SolutionManager<Scheduler.ShiftSchedule, HardSoftLongScore> solutionManager = SolutionManager.create(solverFactory);
@@ -6711,9 +6717,9 @@ public class ShiftApp {
 
         response.put("message", message.toString());
 
-        System.out.println("\n   ✅ Assignment Complete for " + shiftName + "!");
-        System.out.println("      Total assignments: " + assignedCount);
-        System.out.println("      Breaks scheduled: " + breakSchedules.size());
+        LOG.debug("\n   Γ£à Assignment Complete for " + shiftName + "!");
+        LOG.debug("      Total assignments: " + assignedCount);
+        LOG.debug("      Breaks scheduled: " + breakSchedules.size());
 
         return response;
     }
@@ -6746,8 +6752,8 @@ public class ShiftApp {
 
     // Helper method to save assignment to specific date
     private void saveAssignmentToDate(String dateStr, String shiftName, List<String> employeeIds) {
-        Map<String, List<String>> dayAssignments = shiftAssignments.computeIfAbsent(dateStr, k -> new HashMap<>());
-        List<String> existingEmployees = dayAssignments.computeIfAbsent(shiftName, k -> new ArrayList<>());
+        Map<String, List<String>> dayAssignments = shiftAssignments.computeIfAbsent(dateStr, k -> new ConcurrentHashMap<>());
+        List<String> existingEmployees = dayAssignments.computeIfAbsent(shiftName, k -> new java.util.concurrent.CopyOnWriteArrayList<>());
 
         // Add new employees (avoid duplicates)
         for (String empId : employeeIds) {
@@ -6756,7 +6762,7 @@ public class ShiftApp {
             }
         }
 
-        System.out.println("  Saved to " + dateStr + " - " + shiftName + ": " + existingEmployees.size() + " employees");
+        LOG.debug("  Saved to " + dateStr + " - " + shiftName + ": " + existingEmployees.size() + " employees");
     }
     private String getUnassignmentReason(EmployeeInfo emp, String shiftName, boolean isNightShift,
                                          Map<String, List<Integer>> roleRatingRequirements) {
@@ -6791,7 +6797,7 @@ public class ShiftApp {
         }
 
         double hours = duration.toMinutes() / 60.0;
-        System.out.println("Shift duration: " + start + " to " + end + " = " + hours + " hours");
+        LOG.debug("Shift duration: " + start + " to " + end + " = " + hours + " hours");
         return hours;
     }
 
@@ -7004,18 +7010,18 @@ public class ShiftApp {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getCurrentSchedule(@QueryParam("date") String dateStr) {
         try {
-            System.out.println("=== GET /shifts called ===");
-            System.out.println("📊 Total assignments stored: " + shiftAssignments.size() + " days");
-            System.out.println("👥 Employee records: " + employeeInfo.size());
+            LOG.debug("=== GET /shifts called ===");
+            LOG.debug("≡ƒôè Total assignments stored: " + shiftAssignments.size() + " days");
+            LOG.debug("≡ƒæÑ Employee records: " + employeeInfo.size());
 
             // If specific date requested
             if (dateStr != null) {
                 dateStr = dateStr.trim();
-                System.out.println("🔍 Looking for date: " + dateStr);
+                LOG.debug("≡ƒöì Looking for date: " + dateStr);
                 Map<String, List<String>> dayAssignments = shiftAssignments.get(dateStr);
 
                 if (dayAssignments == null || dayAssignments.isEmpty()) {
-                    System.out.println("❌ No assignments found for date: " + dateStr);
+                    LOG.debug("Γ¥î No assignments found for date: " + dateStr);
                     return Response.ok(Map.of(
                             "date", dateStr,
                             "assignments", Map.of(),
@@ -7025,7 +7031,7 @@ public class ShiftApp {
                     )).build();
                 }
 
-                System.out.println("✅ Found assignments for " + dateStr + ": " + dayAssignments.size() + " shifts");
+                LOG.debug("Γ£à Found assignments for " + dateStr + ": " + dayAssignments.size() + " shifts");
 
                 // Convert to frontend format
                 List<Map<String, Object>> slots = new ArrayList<>();
@@ -7061,7 +7067,7 @@ public class ShiftApp {
                             shiftHourlyCost += emp.getHourlyWage();
                         } else {
                             // Generic handling for unknown employees
-                            System.out.println("⚠️ Employee not found: " + empId);
+                            LOG.debug("ΓÜá∩╕Å Employee not found: " + empId);
                             Map<String, Object> empMap = new HashMap<>();
                             empMap.put("id", empId);
                             empMap.put("name", generateGenericName(empId, "Employee"));
@@ -7086,7 +7092,7 @@ public class ShiftApp {
                     slots.add(slot);
                 }
 
-                System.out.println("✅ Returning " + totalAssigned + " assignments");
+                LOG.debug("Γ£à Returning " + totalAssigned + " assignments");
 
                 return Response.ok(Map.of(
                         "date", dateStr,
@@ -7099,7 +7105,7 @@ public class ShiftApp {
 
             } else {
                 // Return all assignments
-                System.out.println("📋 Returning all assignments");
+                LOG.debug("≡ƒôï Returning all assignments");
 
                 List<Map<String, Object>> allSlots = new ArrayList<>();
                 List<String> sortedDates = new ArrayList<>(shiftAssignments.keySet());
@@ -7165,8 +7171,8 @@ public class ShiftApp {
                 // Generic employee count
                 statistics.put("totalEmployees", employeeInfo.size());
 
-                System.out.println("✅ Total slots: " + allSlots.size());
-                System.out.println("✅ Total assignments: " + totalAssignments);
+                LOG.debug("Γ£à Total slots: " + allSlots.size());
+                LOG.debug("Γ£à Total assignments: " + totalAssignments);
 
                 return Response.ok(Map.of(
                         "slots", allSlots,
@@ -7177,8 +7183,8 @@ public class ShiftApp {
             }
 
         } catch (Exception e) {
-            System.err.println("❌ Error in GET /shifts: " + e.getMessage());
-            e.printStackTrace();
+            LOG.error("Γ¥î Error in GET /shifts: " + e.getMessage());
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get schedule: " + e.getMessage()))
                     .build();
@@ -7229,7 +7235,7 @@ public class ShiftApp {
             return isGroupA ? "A" : "B";
 
         } catch (NumberFormatException e) {
-            System.err.println("Error parsing employee ID: " + employeeId + " - " + e.getMessage());
+            LOG.error("Error parsing employee ID: " + employeeId + " - " + e.getMessage());
             return "Unknown";
         }
     }
@@ -7246,7 +7252,7 @@ public class ShiftApp {
 
     // NEW METHOD: Convert shiftAssignments to Bryntum format
     private Map<String, Object> convertShiftAssignmentsToBryntumFormat() {
-        System.out.println("📊 Converting shiftAssignments to Bryntum format...");
+        LOG.debug("≡ƒôè Converting shiftAssignments to Bryntum format...");
 
         List<Map<String, Object>> employeeAssignments = new ArrayList<>();
         List<Map<String, Object>> slotData = new ArrayList<>();
@@ -7306,7 +7312,7 @@ public class ShiftApp {
                     }
                 }
             } catch (Exception e) {
-                System.err.println("Error processing date " + dateStr + ": " + e.getMessage());
+                LOG.error("Error processing date " + dateStr + ": " + e.getMessage());
             }
         }
 
@@ -7328,11 +7334,11 @@ public class ShiftApp {
             }
         }
 
-        System.out.println("📊 Converted shift assignments to Bryntum format:");
-        System.out.println("   - Assignments: " + employeeAssignments.size());
-        System.out.println("   - Slots: " + slotData.size());
-        System.out.println("   - Leave days: " + leaveEvents.size());
-        System.out.println("   - OT Coverage assignments: " + otCoverageEvents.size());
+        LOG.debug("≡ƒôè Converted shift assignments to Bryntum format:");
+        LOG.debug("   - Assignments: " + employeeAssignments.size());
+        LOG.debug("   - Slots: " + slotData.size());
+        LOG.debug("   - Leave days: " + leaveEvents.size());
+        LOG.debug("   - OT Coverage assignments: " + otCoverageEvents.size());
 
         Map<String, Object> response = new HashMap<>();
         response.put("employees", employeeAssignments);
@@ -7349,30 +7355,30 @@ public class ShiftApp {
 
     public Response reoptimize() {
         try {
-            System.out.println("=== POST /shifts called - Refreshing manual schedule ===");
+            LOG.debug("=== POST /shifts called - Refreshing manual schedule ===");
 
             // Step 1: Clear temporary data only (attendance, OT, coverage)
             otCoverageAssignments.clear();
             AttendanceService.clearAllClockStatusAndAttendance();
-            System.out.println("🔄 Cleared temporary data (attendance, OT, coverage)");
+            LOG.debug("≡ƒöä Cleared temporary data (attendance, OT, coverage)");
 
             // Step 2: Do NOT clear shiftAssignments - preserve supervisor's manual work!
-            // shiftAssignments.clear();  // ← Commented out intentionally
-            // syncAllEmployeesToDatabase();         // ← No need to save empty
+            // shiftAssignments.clear();  // ΓåÉ Commented out intentionally
+            // syncAllEmployeesToDatabase();         // ΓåÉ No need to save empty
 
             // Step 3: Return current manual schedule (from persisted assignments)
             Scheduler.ScheduleResponse response = Scheduler.getExistingSchedule();
 
             // Optional: Force frontend to refresh calendar
-            System.out.println("📋 Returning current manual assignments");
+            LOG.debug("≡ƒôï Returning current manual assignments");
 
             return Response.ok(response)
                     .header("Access-Control-Allow-Origin", "*")
                     .build();
 
         } catch (Exception e) {
-            System.err.println("❌ Error refreshing schedule: " + e.getMessage());
-            e.printStackTrace();
+            LOG.error("Γ¥î Error refreshing schedule: " + e.getMessage());
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to refresh schedule: " + e.getMessage()))
                     .header("Access-Control-Allow-Origin", "*")
@@ -7410,7 +7416,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get employee leaves"))
                     .build();
@@ -7469,7 +7475,7 @@ public class ShiftApp {
                 leaveRecords.add(leaveRecord);
 
                 // === PERSIST leave with type ===
-                employeeLeaves.computeIfAbsent(employeeId, k -> new ArrayList<>())
+                employeeLeaves.computeIfAbsent(employeeId, k -> new java.util.concurrent.CopyOnWriteArrayList<>())
                         .add(new LeaveRecord(dateStr, leaveType));
                 
                 // === PHASE 4: Persist to MySQL ===
@@ -7483,7 +7489,7 @@ public class ShiftApp {
                 // === Determine scheduled shift for this specific date ===
                 String scheduledShift = null;
 
-                // Look for manual assignment: shiftAssignments.get(dateStr) → map of shift → list of employees
+                // Look for manual assignment: shiftAssignments.get(dateStr) ΓåÆ map of shift ΓåÆ list of employees
                 Map<String, List<String>> dayAssignments = shiftAssignments.get(dateStr);
                 if (dayAssignments != null) {
                     // Check each shift to see if this employee is assigned
@@ -7571,7 +7577,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid data: " + e.getMessage()))
                     .build();
@@ -7600,7 +7606,7 @@ public class ShiftApp {
         // If no assignment found for this date, fall back to default shift based on department
         if (scheduledShift == null) {
             scheduledShift = assignDefaultShift(employeeId, empInfo);
-            System.out.println("⚠️ No manual assignment found for " + empInfo.getName() +
+            System.out.println("ΓÜá∩╕Å No manual assignment found for " + empInfo.getName() +
                     " on " + leaveDate + ", using default: " + scheduledShift);
         }
 
@@ -7615,35 +7621,35 @@ public class ShiftApp {
             System.out.println("Created leave coverage request for " + empInfo.getName() +
                     " on " + leaveDate + " for " + scheduledShift + " shift");
 
-            System.out.println("Coverage request details:");
-            System.out.println("  - Request ID: " + coverageRequest.getId());
-            System.out.println("  - Absent Employee: " + empInfo.getName() + " (" + employeeId + ")");
-            System.out.println("  - Date: " + leaveDate);
-            System.out.println("  - Shift: " + scheduledShift);
-            System.out.println("  - Department: " + empInfo.getDepartment());
-            System.out.println("  - Required Skills: " + empInfo.getSkills());
-            System.out.println("  - Manager: " + empInfo.getManagerId());
+            LOG.debug("Coverage request details:");
+            LOG.debug("  - Request ID: " + coverageRequest.getId());
+            LOG.debug("  - Absent Employee: " + empInfo.getName() + " (" + employeeId + ")");
+            LOG.debug("  - Date: " + leaveDate);
+            LOG.debug("  - Shift: " + scheduledShift);
+            LOG.debug("  - Department: " + empInfo.getDepartment());
+            LOG.debug("  - Required Skills: " + empInfo.getSkills());
+            LOG.debug("  - Manager: " + empInfo.getManagerId());
 
             // Send notification to manager
             if (systemConfig.isNotifyLeaveCoverageRequired() && empInfo.getManagerId() != null) {
-                System.out.println("Sending notification to manager: " + empInfo.getManagerId());
+                LOG.debug("Sending notification to manager: " + empInfo.getManagerId());
                 sendNotification(empInfo.getManagerId(),
                         "LEAVE_COVERAGE_REQUIRED",
                         empInfo.getName() + " is on leave on " + leaveDate +
                                 ". " + scheduledShift + " shift coverage required. " +
                                 "Required skills: " + String.join(", ", empInfo.getSkills()));
             } else {
-                System.out.println("No manager found or notifications disabled");
+                LOG.debug("No manager found or notifications disabled");
             }
 
             // Log suitable employees
             List<EmployeeInfo> suitableEmployees = coverageRequest.getSuitableEmployees();
-            System.out.println("Found " + suitableEmployees.size() + " suitable employees:");
+            LOG.debug("Found " + suitableEmployees.size() + " suitable employees:");
             suitableEmployees.forEach(emp ->
                     System.out.println("  - " + emp.getName() + " (" + emp.getId() + ") - Skills: " + emp.getSkills())
             );
         } else {
-            System.out.println("Could not determine shift for " + empInfo.getName() + " on " + leaveDate);
+            LOG.debug("Could not determine shift for " + empInfo.getName() + " on " + leaveDate);
         }
     }
 
@@ -7694,7 +7700,7 @@ public class ShiftApp {
                                 break;
                         }
 
-                        System.out.println("🗑️ Removed specific leave for " + employeeId +
+                        System.out.println("≡ƒùæ∩╕Å Removed specific leave for " + employeeId +
                                 " (" + empInfo.getName() + ") on " + leaveDate);
 
                         if (employeeLeaves.get(employeeId).isEmpty()) {
@@ -7733,7 +7739,7 @@ public class ShiftApp {
                     employeeLeaves.remove(employeeId);
                 }
 
-                System.out.println("🗑️ Removed ALL " + removedCount + " leaves for: " +
+                System.out.println("≡ƒùæ∩╕Å Removed ALL " + removedCount + " leaves for: " +
                         employeeId + " (" + empInfo.getName() + ")");
 
                 return Response.ok(Map.of(
@@ -7746,7 +7752,7 @@ public class ShiftApp {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Failed to remove leave: " + e.getMessage()))
                     .build();
@@ -7791,7 +7797,7 @@ public class ShiftApp {
                     // Return 1 day of leave balance (assuming annual)
                     empInfo.setAnnualLeaveBalance(empInfo.getAnnualLeaveBalance() + 1);
 
-                    System.out.println("✅ Revoked leave for " + employeeId +
+                    System.out.println("Γ£à Revoked leave for " + employeeId +
                             " (" + empInfo.getName() + ") on " + leaveDate);
 
                     if (leaves.isEmpty()) {
@@ -7807,20 +7813,20 @@ public class ShiftApp {
                             "remainingBalance", empInfo.getAnnualLeaveBalance()
                     )).build();
                 } else {
-                    System.out.println("⚠️ No leave found for " + employeeId + " (" + empInfo.getName() + ") on " + leaveDate);
+                    LOG.debug("ΓÜá∩╕Å No leave found for " + employeeId + " (" + empInfo.getName() + ") on " + leaveDate);
                     return Response.status(Response.Status.NOT_FOUND)
                             .entity(Map.of("error", "No leave found for employee on " + leaveDate))
                             .build();
                 }
             } else {
-                System.out.println("⚠️ No leaves found for employee: " + employeeId + " (" + empInfo.getName() + ")");
+                LOG.debug("ΓÜá∩╕Å No leaves found for employee: " + employeeId + " (" + empInfo.getName() + ")");
                 return Response.status(Response.Status.NOT_FOUND)
                         .entity(Map.of("error", "No leaves found for employee"))
                         .build();
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Invalid data: " + e.getMessage()))
                     .build();
@@ -7832,7 +7838,7 @@ public class ShiftApp {
     @Produces(MediaType.APPLICATION_JSON)
     public Response getLeaves() {
         try {
-            System.out.println("=== GET /shifts/leaves called ===");
+            LOG.debug("=== GET /shifts/leaves called ===");
 
             List<Map<String, Object>> allLeaves = new ArrayList<>();
 
@@ -7855,7 +7861,7 @@ public class ShiftApp {
                 }
             }
 
-            System.out.println("✅ Returning " + allLeaves.size() + " leave records");
+            LOG.debug("Γ£à Returning " + allLeaves.size() + " leave records");
             return Response.ok(Map.of(
                     "leaves", allLeaves,
                     "count", allLeaves.size(),
@@ -7863,7 +7869,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get leaves: " + e.getMessage()))
                     .build();
@@ -7887,7 +7893,7 @@ public class ShiftApp {
                     leaveInfo.put("employeeId", employeeId);
                     leaveInfo.put("employeeName", empInfo.getName());
                     leaveInfo.put("leaveDate", record.getDate());
-                    leaveInfo.put("leaveType", record.getLeaveType());  // ← NOW CORRECT!
+                    leaveInfo.put("leaveType", record.getLeaveType());  // ΓåÉ NOW CORRECT!
 
                     leaveInfo.put("position", empInfo.getPosition());
                     leaveInfo.put("employeeColor", empInfo.getShiftColor());
@@ -7909,7 +7915,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get detailed leaves"))
                     .build();
@@ -8010,7 +8016,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get suitable employees: " + e.getMessage()))
                     .build();
@@ -8103,7 +8109,7 @@ public class ShiftApp {
                 existingRequest = new LeaveCoverageRequest(employeeId, leaveDate, scheduledShift);
                 leaveCoverageRequests.put(existingRequest.getId(), existingRequest);
                 if (mysqlService != null) mysqlService.saveCoverageRequest(existingRequest);
-                System.out.println("📋 Created new coverage request for quick assignment");
+                LOG.debug("≡ƒôï Created new coverage request for quick assignment");
             }
 
             // Now assign coverage using the existing method
@@ -8118,7 +8124,7 @@ public class ShiftApp {
                 EmployeeInfo assignedEmp = employeeInfo.get(assignedEmployeeId);
                 EmployeeInfo absentEmp = employeeInfo.get(employeeId);
 
-                System.out.println("✅ Quick coverage assigned: " + assignedEmp.getName() +
+                System.out.println("Γ£à Quick coverage assigned: " + assignedEmp.getName() +
                         " covering for " + absentEmp.getName() + " on " + date +
                         " for " + hours + " hours. OT Wage: $" + String.format("%.2f", assignment.getOtWage()));
 
@@ -8138,7 +8144,7 @@ public class ShiftApp {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Failed to assign coverage: " + e.getMessage()))
                     .build();
@@ -8174,7 +8180,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get coverage requests"))
                     .build();
@@ -8204,7 +8210,7 @@ public class ShiftApp {
             return Response.ok(response).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get coverage request details"))
                     .build();
@@ -8367,7 +8373,7 @@ public class ShiftApp {
             );
 
             if (assignment != null) {
-                System.out.println("✅ Coverage assigned: " + assignedEmp.getName() +
+                System.out.println("Γ£à Coverage assigned: " + assignedEmp.getName() +
                         " covering for " + absentEmp.getName() + " on " + request.getLeaveDate() +
                         " for " + hours + " hours. OT Wage: $" + String.format("%.2f", assignment.getOtWage()));
 
@@ -8412,7 +8418,7 @@ public class ShiftApp {
                     .entity(Map.of("error", "Invalid number format for hours or skill threshold"))
                     .build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Failed to assign coverage: " + e.getMessage()))
                     .build();
@@ -8480,7 +8486,7 @@ public class ShiftApp {
                 EmployeeInfo assignedEmp = employeeInfo.get(assignedEmployeeId);
                 EmployeeInfo absentEmp = employeeInfo.get(request.getAbsentEmployeeId());
 
-                System.out.println("✅ Coverage assigned: " + assignedEmp.getName() +
+                System.out.println("Γ£à Coverage assigned: " + assignedEmp.getName() +
                         " covering for " + absentEmp.getName() +
                         " for " + hours + " hours. OT Wage: $" + assignment.getOtWage());
 
@@ -8498,7 +8504,7 @@ public class ShiftApp {
             }
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Failed to assign coverage: " + e.getMessage()))
                     .build();
@@ -8581,7 +8587,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get suitable employees: " + e.getMessage()))
                     .build();
@@ -8616,7 +8622,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get coverage assignments"))
                     .build();
@@ -8642,7 +8648,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
                     .entity(Map.of("error", "Failed to get notifications"))
                     .build();
@@ -8663,7 +8669,7 @@ public class ShiftApp {
 
             notification.setRead(true);
             if (mysqlService != null) mysqlService.saveNotification(notification);
-            System.out.println("✅ Marked notification as read: " + notificationId);
+            LOG.debug("Γ£à Marked notification as read: " + notificationId);
 
             return Response.ok(Map.of(
                     "status", "success",
@@ -8672,7 +8678,7 @@ public class ShiftApp {
             )).build();
 
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("error", "Failed to mark notification as read"))
                     .build();
@@ -9121,7 +9127,7 @@ public class ShiftApp {
                     requiredRatingsPerRole.put(req.getRoleName(), req.getAllowedRatings());
                 }
 
-                System.out.println("✅ ShiftConstraints configured with " +
+                System.out.println("Γ£à ShiftConstraints configured with " +
                         maxWorkersPerRole.size() + " role limits and " +
                         requiredRatingsPerRole.size() + " rating requirements");
             }
@@ -9477,7 +9483,7 @@ public class ShiftApp {
 
         // NEW METHOD: Get existing schedule without regenerating
         public static ScheduleResponse getExistingSchedule() {
-            System.out.println("📋 Returning existing schedule without regeneration");
+            LOG.debug("≡ƒôï Returning existing schedule without regeneration");
             List<Employee> employees = createEmployees();
             List<Map<String, Object>> employeeAssignments = new ArrayList<>();
             List<Map<String, Object>> slotData = new ArrayList<>();
@@ -9635,11 +9641,11 @@ public class ShiftApp {
                 otCoverageEvents.add(otEvent);
             }
 
-            System.out.println("📊 Converted existing schedule to Bryntum format:");
-            System.out.println("   - Assignments: " + employeeAssignments.size());
-            System.out.println("   - Slots: " + slotData.size());
-            System.out.println("   - Leave days: " + leaveEvents.size());
-            System.out.println("   - OT Coverage assignments: " + otCoverageEvents.size());
+            LOG.debug("≡ƒôè Converted existing schedule to Bryntum format:");
+            LOG.debug("   - Assignments: " + employeeAssignments.size());
+            LOG.debug("   - Slots: " + slotData.size());
+            LOG.debug("   - Leave days: " + leaveEvents.size());
+            LOG.debug("   - OT Coverage assignments: " + otCoverageEvents.size());
 
             return new ScheduleResponse(employeeAssignments, slotData, leaveEvents, otCoverageEvents);
         }
@@ -9647,25 +9653,25 @@ public class ShiftApp {
         // GENERATE OPTIMIZED SCHEDULE - ENSURING PROPER ALTERNATE SCHEDULING
 
         public static ScheduleResponse generateOptimizedSchedule() {
-            System.out.println("🔧 [OPTIMIZATION START] Generating optimized schedule...");
+            LOG.debug("≡ƒöº [OPTIMIZATION START] Generating optimized schedule...");
             long startTime = System.currentTimeMillis();
 
             // First, create employees with proper group assignment
             List<Employee> employees = createEmployees();
-            System.out.println("📊 Created " + employees.size() + " employees");
+            LOG.debug("≡ƒôè Created " + employees.size() + " employees");
 
             // Create initial assignments with STRICT group rules
-            System.out.println("\n📅 Creating initial assignments with strict alternate day scheduling...");
+            LOG.debug("\n≡ƒôà Creating initial assignments with strict alternate day scheduling...");
             List<EmployeeAssignment> assignments = createInitialAssignmentsWithGroups(employees);
 
-            System.out.println("\n📊 [INITIAL ASSIGNMENT SUMMARY]");
-            System.out.println("Total assignments created: " + assignments.size());
+            LOG.debug("\n≡ƒôè [INITIAL ASSIGNMENT SUMMARY]");
+            LOG.debug("Total assignments created: " + assignments.size());
 
             // Verify the initial assignment
             verifyInitialAssignment(assignments);
 
             // Now optimize with Timefold
-            System.out.println("\n⚙️ [TIMEFOLD OPTIMIZATION START]");
+            LOG.debug("\nΓÜÖ∩╕Å [TIMEFOLD OPTIMIZATION START]");
 
             List<String> shiftTypes = Arrays.asList("Morning", "Afternoon", "Night");
 
@@ -9680,13 +9686,13 @@ public class ShiftApp {
             Solver<ShiftSchedule> solver = solverFactory.buildSolver();
 
             ShiftSchedule problem = new ShiftSchedule(assignments, shiftTypes);
-            System.out.println("Starting solver with " + assignments.size() + " assignments...");
+            LOG.debug("Starting solver with " + assignments.size() + " assignments...");
 
             ShiftSchedule solution = solver.solve(problem);
             long endTime = System.currentTimeMillis();
 
-            System.out.println("✅ [OPTIMIZATION COMPLETE] Time: " + ((endTime - startTime)/1000.0) + "s");
-            System.out.println("Final score: " + solution.getScore());
+            LOG.debug("Γ£à [OPTIMIZATION COMPLETE] Time: " + ((endTime - startTime)/1000.0) + "s");
+            LOG.debug("Final score: " + solution.getScore());
 
             // Validate the solution
             validateFinalSolution(solution.getAssignments());
@@ -9696,7 +9702,7 @@ public class ShiftApp {
             return convertToBryntumFormatWithLeaves(solution.getAssignments(), employees);
         }
         private static void validateFinalSolution(List<EmployeeAssignment> assignments) {
-            System.out.println("\n🔍 [FINAL SOLUTION VALIDATION]");
+            LOG.debug("\n≡ƒöì [FINAL SOLUTION VALIDATION]");
 
             Map<String, List<EmployeeAssignment>> assignmentsByEmployee = new HashMap<>();
 
@@ -9723,8 +9729,8 @@ public class ShiftApp {
 
                     if (date2.equals(date1.plusDays(1))) {
                         consecutiveDayViolations++;
-                        System.out.println("❌ " + empAssignments.get(i).getEmployeeName() +
-                                " works consecutive days: " + date1 + " → " + date2);
+                        System.out.println("Γ¥î " + empAssignments.get(i).getEmployeeName() +
+                                " works consecutive days: " + date1 + " ΓåÆ " + date2);
                     }
                 }
 
@@ -9734,7 +9740,7 @@ public class ShiftApp {
                     for (EmployeeAssignment assignment : empAssignments) {
                         if ("Night".equals(assignment.getShift())) {
                             femaleNightShiftViolations++;
-                            System.out.println("❌ " + assignment.getEmployeeName() +
+                            System.out.println("Γ¥î " + assignment.getEmployeeName() +
                                     " (Female) works Night shift on " + assignment.getDate());
                         }
                     }
@@ -9751,26 +9757,26 @@ public class ShiftApp {
 
                     if (isGroupA && (day == DayOfWeek.TUESDAY || day == DayOfWeek.THURSDAY)) {
                         groupViolations++;
-                        System.out.println("❌ " + assignment.getEmployeeName() +
+                        System.out.println("Γ¥î " + assignment.getEmployeeName() +
                                 " (Group A) works on " + day + " " + date);
                     } else if (!isGroupA && (day == DayOfWeek.MONDAY ||
                             day == DayOfWeek.WEDNESDAY || day == DayOfWeek.FRIDAY)) {
                         groupViolations++;
-                        System.out.println("❌ " + assignment.getEmployeeName() +
+                        System.out.println("Γ¥î " + assignment.getEmployeeName() +
                                 " (Group B) works on " + day + " " + date);
                     }
                 }
             }
 
-            System.out.println("\n📊 [VIOLATION SUMMARY]");
-            System.out.println("Consecutive day violations: " + consecutiveDayViolations);
-            System.out.println("Female night shift violations: " + femaleNightShiftViolations);
-            System.out.println("Group violations: " + groupViolations);
+            LOG.debug("\n≡ƒôè [VIOLATION SUMMARY]");
+            LOG.debug("Consecutive day violations: " + consecutiveDayViolations);
+            LOG.debug("Female night shift violations: " + femaleNightShiftViolations);
+            LOG.debug("Group violations: " + groupViolations);
 
             if (consecutiveDayViolations == 0 && femaleNightShiftViolations == 0 && groupViolations == 0) {
-                System.out.println("✅ PERFECT SOLUTION - All constraints satisfied!");
+                LOG.debug("Γ£à PERFECT SOLUTION - All constraints satisfied!");
             } else {
-                System.out.println("⚠️ Solution has " +
+                System.out.println("ΓÜá∩╕Å Solution has " +
                         (consecutiveDayViolations + femaleNightShiftViolations + groupViolations) +
                         " constraint violations");
             }
@@ -10017,21 +10023,21 @@ public class ShiftApp {
                 }
             }
 
-            System.out.println("  Initial verification:");
-            System.out.println("    Consecutive day issues: " + consecutiveIssues);
-            System.out.println("    Group assignment issues: " + groupIssues);
-            System.out.println("    Female night shift issues: " + femaleNightIssues);
+            LOG.debug("  Initial verification:");
+            LOG.debug("    Consecutive day issues: " + consecutiveIssues);
+            LOG.debug("    Group assignment issues: " + groupIssues);
+            LOG.debug("    Female night shift issues: " + femaleNightIssues);
 
             if (consecutiveIssues == 0 && groupIssues == 0 && femaleNightIssues == 0) {
-                System.out.println("    ✅ Perfect initial assignment!");
+                LOG.debug("    Γ£à Perfect initial assignment!");
             } else {
-                System.out.println("    ⚠️ Some issues in initial assignment");
+                LOG.debug("    ΓÜá∩╕Å Some issues in initial assignment");
             }
         }
 
         // Analyze and fix solution
         private static List<EmployeeAssignment> analyzeAndFixSolution(List<EmployeeAssignment> assignments) {
-            System.out.println("\n🔍 [SOLUTION ANALYSIS]");
+            LOG.debug("\n≡ƒöì [SOLUTION ANALYSIS]");
 
             Map<String, List<EmployeeAssignment>> byEmployee = new HashMap<>();
 
@@ -10059,19 +10065,19 @@ public class ShiftApp {
                         // Remove the later assignment
                         fixedAssignments.remove(empAssignments.get(i));
                         fixesApplied++;
-                        System.out.println("  🔧 Fixed consecutive days for " + empAssignments.get(i).getEmployeeName());
+                        LOG.debug("  ≡ƒöº Fixed consecutive days for " + empAssignments.get(i).getEmployeeName());
                         break;
                     }
                 }
             }
 
-            System.out.println("  Total fixes applied: " + fixesApplied);
+            LOG.debug("  Total fixes applied: " + fixesApplied);
             return fixedAssignments;
         }
 
         // Print shift consistency report
         private static void printShiftConsistencyReport(List<EmployeeAssignment> assignments) {
-            System.out.println("\n📊 [SHIFT CONSISTENCY REPORT]");
+            LOG.debug("\n≡ƒôè [SHIFT CONSISTENCY REPORT]");
 
             Map<String, List<EmployeeAssignment>> byEmployee = new HashMap<>();
 
@@ -10100,7 +10106,7 @@ public class ShiftApp {
                     consistentEmployees++;
                 } else {
                     inconsistentEmployees++;
-                    System.out.println("  ⚠️ " + empAssignments.get(0).getEmployeeName() +
+                    System.out.println("  ΓÜá∩╕Å " + empAssignments.get(0).getEmployeeName() +
                             " has inconsistent shifts: " +
                             empAssignments.stream()
                                     .map(EmployeeAssignment::getShift)
@@ -10109,8 +10115,8 @@ public class ShiftApp {
                 }
             }
 
-            System.out.println("\n  Consistent employees: " + consistentEmployees);
-            System.out.println("  Inconsistent employees: " + inconsistentEmployees);
+            LOG.debug("\n  Consistent employees: " + consistentEmployees);
+            LOG.debug("  Inconsistent employees: " + inconsistentEmployees);
             System.out.println("  Consistency rate: " +
                     String.format("%.1f%%", (consistentEmployees * 100.0 / byEmployee.size())));
         }
@@ -10150,7 +10156,7 @@ public class ShiftApp {
             }
 
             // Check for consecutive days
-            System.out.println("\n🔍 [SOLUTION ANALYSIS]");
+            LOG.debug("\n≡ƒöì [SOLUTION ANALYSIS]");
             int employeesWithConsecutiveDays = 0;
 
             for (Map.Entry<String, List<EmployeeAssignment>> entry : assignmentsByEmployee.entrySet()) {
@@ -10166,7 +10172,7 @@ public class ShiftApp {
 
                     if (date2.equals(date1.plusDays(1))) {
                         employeesWithConsecutiveDays++;
-                        System.out.println("  ⚠️ " + empAssignments.get(i).getEmployeeName() +
+                        System.out.println("  ΓÜá∩╕Å " + empAssignments.get(i).getEmployeeName() +
                                 " works consecutive days: " + date1 + " and " + date2);
                         break;
                     }
@@ -10174,9 +10180,9 @@ public class ShiftApp {
             }
 
             if (employeesWithConsecutiveDays == 0) {
-                System.out.println("  ✅ No employees work consecutive days!");
+                LOG.debug("  Γ£à No employees work consecutive days!");
             } else {
-                System.out.println("  ⚠️ " + employeesWithConsecutiveDays + " employees work consecutive days");
+                LOG.debug("  ΓÜá∩╕Å " + employeesWithConsecutiveDays + " employees work consecutive days");
             }
         }
 
@@ -10197,7 +10203,7 @@ public class ShiftApp {
                         employeeLeaves.get(assignment.getEmployeeId()).contains(assignment.getDate());
 
                 if (isOnLeave) {
-                    System.out.println("⛔ REMOVING SHIFT - Employee " + assignment.getEmployeeName() +
+                    System.out.println("Γ¢ö REMOVING SHIFT - Employee " + assignment.getEmployeeName() +
                             " is on leave on " + assignment.getDate());
                     continue; // Skip this assignment if employee is on leave
                 }
@@ -10322,11 +10328,11 @@ public class ShiftApp {
                 otCoverageEvents.add(otEvent);
             }
 
-            System.out.println("📊 Converted to Bryntum format:");
-            System.out.println("   - Assignments: " + employeeAssignments.size());
-            System.out.println("   - Slots: " + slotData.size());
-            System.out.println("   - Leave days: " + leaveEvents.size());
-            System.out.println("   - OT Coverage assignments: " + otCoverageEvents.size());
+            LOG.debug("≡ƒôè Converted to Bryntum format:");
+            LOG.debug("   - Assignments: " + employeeAssignments.size());
+            LOG.debug("   - Slots: " + slotData.size());
+            LOG.debug("   - Leave days: " + leaveEvents.size());
+            LOG.debug("   - OT Coverage assignments: " + otCoverageEvents.size());
 
             return new ScheduleResponse(employeeAssignments, slotData, leaveEvents, otCoverageEvents);
         }
@@ -10338,7 +10344,7 @@ public class ShiftApp {
         private static List<Employee> createEmployees() {
             // If employees already exist in storage, reconstruct them with correct groups and leaves
             if (!employeeInfo.isEmpty()) {
-                System.out.println("✅ Reusing existing employees from employeeInfo");
+                LOG.debug("Γ£à Reusing existing employees from employeeInfo");
                 List<Employee> existingEmployees = new ArrayList<>();
                 for (EmployeeInfo empInfo : employeeInfo.values()) {
                     Employee emp = new Employee(
@@ -10361,9 +10367,9 @@ public class ShiftApp {
                 return existingEmployees;
             }
 
-            System.out.println("🔄 Creating 50 new employees with proper alternate day group assignment...");
-            System.out.println("   → Group A (odd IDs: E001, E003, ...) → Works Mon, Wed, Fri");
-            System.out.println("   → Group B (even IDs: E002, E004, ...) → Works Tue, Thu");
+            LOG.debug("≡ƒöä Creating 50 new employees with proper alternate day group assignment...");
+            LOG.debug("   ΓåÆ Group A (odd IDs: E001, E003, ...) ΓåÆ Works Mon, Wed, Fri");
+            LOG.debug("   ΓåÆ Group B (even IDs: E002, E004, ...) ΓåÆ Works Tue, Thu");
 
             List<Employee> employees = new ArrayList<>();
             Random rand = new Random(50); // Fixed seed for reproducibility
@@ -10442,7 +10448,7 @@ public class ShiftApp {
                     // === CREATE EMPLOYEE INSTANCE (LOCAL VARIABLE - NO STATIC) ===
                     Employee emp = new Employee(employeeId, fullName, gender, category, managerId, department, position);
 
-                    // === CORRECT GROUP ASSIGNMENT: Odd ID → Group A (0), Even → Group B (1) ===
+                    // === CORRECT GROUP ASSIGNMENT: Odd ID ΓåÆ Group A (0), Even ΓåÆ Group B (1) ===
                     int employeeNum = Integer.parseInt(employeeId.substring(1));
                     boolean isGroupA = employeeNum % 2 == 1;
                     emp.setGroup(isGroupA ? 0 : 1);
@@ -10481,20 +10487,20 @@ public class ShiftApp {
                     int performanceRating;
 
                     if (category.equals("Manager")) {
-                        performanceRating = rand.nextInt(3) + 3; // 3–5 stars
+                        performanceRating = rand.nextInt(3) + 3; // 3ΓÇô5 stars
                     } else if (position.contains("Senior") || position.contains("Lead")) {
-                        performanceRating = rand.nextInt(4) + 2; // 2–5 stars
+                        performanceRating = rand.nextInt(4) + 2; // 2ΓÇô5 stars
                     } else if (position.contains("Support") || position.contains("Help Desk")) {
-                        performanceRating = rand.nextInt(3) + 1; // 1–3 stars
+                        performanceRating = rand.nextInt(3) + 1; // 1ΓÇô3 stars
                     } else {
-                        performanceRating = rand.nextInt(5) + 1; // 1–5 balanced
+                        performanceRating = rand.nextInt(5) + 1; // 1ΓÇô5 balanced
                     }
 
                     if (hourlyWage > 50 && rand.nextDouble() < 0.7) {
                         performanceRating = Math.min(5, performanceRating + 1);
                     }
 
-                    empInfo.setPerformanceRating(performanceRating);  // ← THIS LINE HERE
+                    empInfo.setPerformanceRating(performanceRating);  // ΓåÉ THIS LINE HERE
                     // Store in global maps
                     employeeInfo.put(employeeId, empInfo);
                     employees.add(emp);
@@ -10505,18 +10511,18 @@ public class ShiftApp {
             employeesInitialized = true;
 
             // Final summary and group verification
-            System.out.println("\n✅ Successfully created " + employees.size() + " employees");
-            System.out.println("   → Group A (Mon/Wed/Fri): " +
+            LOG.debug("\nΓ£à Successfully created " + employees.size() + " employees");
+            System.out.println("   ΓåÆ Group A (Mon/Wed/Fri): " +
                     employees.stream().filter(e -> e.getGroup() == 0).count() + " employees");
-            System.out.println("   → Group B (Tue/Thu):     " +
+            System.out.println("   ΓåÆ Group B (Tue/Thu):     " +
                     employees.stream().filter(e -> e.getGroup() == 1).count() + " employees");
-            System.out.println("\n👥 [GROUP VERIFICATION]");
+            LOG.debug("\n≡ƒæÑ [GROUP VERIFICATION]");
 
             for (Employee emp : employees) {
                 int empNum = Integer.parseInt(emp.getId().substring(1));
                 boolean expectedGroupA = empNum % 2 == 1;
                 String status = emp.getGroup() == (expectedGroupA ? 0 : 1) ? "correct" : "INCORRECT!";
-                System.out.println(" " + emp.getName() + " (" + emp.getId() + ") → Group " +
+                System.out.println(" " + emp.getName() + " (" + emp.getId() + ") ΓåÆ Group " +
                         (emp.getGroup() == 0 ? "A" : "B") + " [" + status + "]");
             }
 
@@ -10805,7 +10811,7 @@ public class ShiftApp {
     // ============ V2: DYNAMIC CONSTRAINTS + SKILLS MATCHING =================
     // ========================================================================
 
-    // ============ ShiftScheduleV2 — Uses HardMediumSoftLongScore ============
+    // ============ ShiftScheduleV2 ΓÇö Uses HardMediumSoftLongScore ============
     @PlanningSolution
     public static class ShiftScheduleV2 {
         @PlanningEntityCollectionProperty
@@ -10859,7 +10865,7 @@ public class ShiftApp {
         public void setPrioritizePermanent(boolean prioritizePermanent) { this.prioritizePermanent = prioritizePermanent; }
     }
 
-    // ============ ShiftConstraintsV2 — Dynamic Constraint Provider ============
+    // ============ ShiftConstraintsV2 ΓÇö Dynamic Constraint Provider ============
     public static class ShiftConstraintsV2 implements ConstraintProvider {
 
         private static class Context {
@@ -10895,7 +10901,7 @@ public class ShiftApp {
                 ctx.requiredRatingsPerRole.put(r.getRoleName(), r.getAllowedRatings());
             }
 
-            System.out.println("✅ ShiftConstraintsV2 configured on thread " + Thread.currentThread().getName() + ": " +
+            System.out.println("Γ£à ShiftConstraintsV2 configured on thread " + Thread.currentThread().getName() + ": " +
                     ctx.maxWorkersPerRole.size() + " role limits, " +
                     ctx.requiredSkillsPerRole.size() + " skill requirements, " +
                     ctx.activeConstraintConfigs.size() + " constraint configs");
@@ -11157,7 +11163,7 @@ public class ShiftApp {
                 constraints.add(buildMaximizeRating(factory, sev));
             }
 
-            System.out.println("📋 ShiftConstraintsV2: Built " + constraints.size() + " total constraints (runtime evaluated)");
+            LOG.debug("≡ƒôï ShiftConstraintsV2: Built " + constraints.size() + " total constraints (runtime evaluated)");
             return constraints.toArray(new Constraint[0]);
         }
 
@@ -11267,14 +11273,14 @@ public class ShiftApp {
         } catch (IllegalArgumentException e) {
             return Response.status(400).entity(Map.of("error", e.getMessage())).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(500).entity(Map.of("error", "V2 assignment failed: " + e.getMessage())).build();
         }
     }
 
     private Map<String, Object> solveShiftV2(Map<String, Object> input) throws Exception {
-        System.out.println("=== POST /shifts/assign-v2 (with skills + dynamic constraints) ===");
-        System.out.println("Input: " + input);
+        LOG.debug("=== POST /shifts/assign-v2 (with skills + dynamic constraints) ===");
+        LOG.debug("Input: " + input);
 
             // ============ VALIDATION ============
             @SuppressWarnings("unchecked")
@@ -11484,7 +11490,7 @@ public class ShiftApp {
                 }
 
                 allEmployees.put(employeeId, empInfo);
-                System.out.println("👤 Employee: " + name + " (" + employeeId + ") - Skills: " + empInfo.getSkills());
+                LOG.debug("≡ƒæñ Employee: " + name + " (" + employeeId + ") - Skills: " + empInfo.getSkills());
             }
 
             // ============ CREATE ROLE LIMITS, RATINGS, AND REQUIRED SKILLS ============
@@ -11559,10 +11565,10 @@ public class ShiftApp {
                             empId + "_" + dateStr, empId, emp.getName(), dateStr,
                             emp.getCategory(), emp.getGender(), emp.getDepartment(), emp.getPosition()
                     );
-                    System.out.println("DEBUG EMP: " + emp.getName() + " rating in emp: " + emp.getPerformanceRating());
+                    LOG.debug("DEBUG EMP: " + emp.getName() + " rating in emp: " + emp.getPerformanceRating());
                     entity.setHourlyWage(emp.getHourlyWage());
                     entity.setPerformanceRating(emp.getPerformanceRating());
-                    System.out.println("DEBUG ENTITY: " + entity.getEmployeeId() + " rating in entity: " + entity.getPerformanceRating());
+                    LOG.debug("DEBUG ENTITY: " + entity.getEmployeeId() + " rating in entity: " + entity.getPerformanceRating());
                     entity.setShiftStartStr(startTime);
                     entity.setShiftStartTimeObj(startLocalTime);
                     entity.setShiftEndStr(endTime);
@@ -11679,10 +11685,10 @@ public class ShiftApp {
                 }
             }
 
-            System.out.println("\n📊 V2 Planning summary:");
-            System.out.println("   Total possible: " + totalPossibleAssignments);
-            System.out.println("   Entities to plan: " + planningEntities.size());
-            System.out.println("   Skipped: " + skippedCount);
+            LOG.debug("\n≡ƒôè V2 Planning summary:");
+            LOG.debug("   Total possible: " + totalPossibleAssignments);
+            LOG.debug("   Entities to plan: " + planningEntities.size());
+            LOG.debug("   Skipped: " + skippedCount);
 
             if (!overrideExisting && planningEntities.isEmpty()) {
                 throw new Exception("No employees available for assignment. Skipped count: " + skippedCount);
@@ -11718,15 +11724,15 @@ public class ShiftApp {
             SolverFactory<ShiftScheduleV2> solverFactory = SolverFactory.create(solverConfig);
             Solver<ShiftScheduleV2> solver = solverFactory.buildSolver();
 
-            System.out.println("🔧 Starting V2 solver...");
+            LOG.debug("≡ƒöº Starting V2 solver...");
             long solverStart = System.currentTimeMillis();
             ShiftScheduleV2 solved = solver.solve(problem);
             long solverTimeMs = System.currentTimeMillis() - solverStart;
-            System.out.println("✅ V2 Solver finished in " + solverTimeMs + "ms, score: " + solved.getScore());
+            LOG.debug("Γ£à V2 Solver finished in " + solverTimeMs + "ms, score: " + solved.getScore());
 
             ai.timefold.solver.core.api.score.ScoreManager<ShiftScheduleV2, HardMediumSoftLongScore> scoreManager = ai.timefold.solver.core.api.score.ScoreManager.create(solverFactory);
             String scoreExplanation = scoreManager.explainScore(solved).getSummary();
-            System.out.println("Score Explanation:\n" + scoreExplanation);
+            LOG.debug("Score Explanation:\n" + scoreExplanation);
 
             // ============ PROCESS RESULTS ============
             int assignedCount = 0;
@@ -11760,8 +11766,8 @@ public class ShiftApp {
                 debugLog.add(logMsg + " -> PROCESSED");
 
                 // Save to shiftAssignments
-                List<String> empList = shiftAssignments.computeIfAbsent(d, k -> new HashMap<>())
-                        .computeIfAbsent(s, k -> new ArrayList<>());
+                List<String> empList = shiftAssignments.computeIfAbsent(d, k -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(s, k -> new java.util.concurrent.CopyOnWriteArrayList<>());
                 if (!empList.contains(eid)) {
                     empList.add(eid);
                 }
@@ -11889,13 +11895,8 @@ public class ShiftApp {
                     "breakAfterHours", breakAfterHours
             ));
             response.put("message", "Successfully assigned shifts (V2 with dynamic constraints)!");
-            if (!skippedPerDate.isEmpty()) {
-                response.put("skipped_by_date", skippedPerDate);
-            }
-
             // Assignment details grouped by date
             response.put("assignments_by_date", assignmentDetails);
-            response.put("debug_log", debugLog);
             response.put("score_explanation", scoreExplanation);
             response.put("message", "Successfully assigned shifts (V2 API)!");
 
@@ -11908,8 +11909,8 @@ public class ShiftApp {
     @Produces(MediaType.APPLICATION_JSON)
     public Response batchAssignShiftsV2(Map<String, Object> input) {
         try {
-            System.out.println("=== POST /shifts/batch-assign-v2 ===");
-            System.out.println("Input: " + input);
+            LOG.debug("=== POST /shifts/batch-assign-v2 ===");
+            LOG.debug("Input: " + input);
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> shifts = (List<Map<String, Object>>) input.get("shifts");
@@ -11955,7 +11956,7 @@ public class ShiftApp {
 
             for (int i = 0; i < shifts.size(); i++) {
                 Map<String, Object> shift = shifts.get(i);
-                System.out.println("\n📋 Processing V2 shift " + (i+1) + "/" + shifts.size());
+                LOG.debug("\n≡ƒôï Processing V2 shift " + (i+1) + "/" + shifts.size());
                 
                 try {
                     // Call the pure Java V2 logic directly
@@ -11977,7 +11978,7 @@ public class ShiftApp {
                     errorResult.put("status", "error");
                     errorResult.put("error_message", e.getMessage());
                     shiftResults.add(errorResult);
-                    e.printStackTrace();
+                    LOG.error("Exception caught", e);
                 }
             }
 
@@ -12015,12 +12016,12 @@ public class ShiftApp {
             );
             response.put("summary", summary);
 
-            System.out.println("\n✅ Batch Assignment V2 Complete!");
-            System.out.println(summary);
+            LOG.debug("\nΓ£à Batch Assignment V2 Complete!");
+            LOG.debug(summary);
 
             return Response.ok(response).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(500).entity(Map.of(
                     "status", "error",
                     "error", "Batch assignment v2 failed: " + e.getMessage(),
@@ -12331,7 +12332,7 @@ public class ShiftApp {
         public void setPrioritizePermanent(boolean prioritizePermanent) { this.prioritizePermanent = prioritizePermanent; }
     }
 
-    // ============ ShiftConstraintsV2 — Dynamic Constraint Provider ============
+    // ============ ShiftConstraintsV2 ΓÇö Dynamic Constraint Provider ============
 
     public static class ShiftConstraintsV3 implements ConstraintProvider {
 
@@ -12554,7 +12555,7 @@ public class ShiftApp {
         } catch (IllegalArgumentException e) {
             return Response.status(400).entity(Map.of("error", e.getMessage())).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(500).entity(Map.of("error", "V3 assignment failed: " + e.getMessage())).build();
         }
     }
@@ -12565,8 +12566,8 @@ public class ShiftApp {
     @Produces(MediaType.APPLICATION_JSON)
     public Response batchAssignShiftsV3(Map<String, Object> input) {
         try {
-            System.out.println("=== POST /shifts/batch-assign-v3 ===");
-            System.out.println("Input: " + input);
+            LOG.info("=== POST /shifts/batch-assign-v3 ===");
+            LOG.debug("Input: " + input);
 
             @SuppressWarnings("unchecked")
             List<Map<String, Object>> shifts = (List<Map<String, Object>>) input.get("shifts");
@@ -12611,7 +12612,7 @@ public class ShiftApp {
 
             for (int i = 0; i < shifts.size(); i++) {
                 Map<String, Object> shift = shifts.get(i);
-                System.out.println("\n📋 Processing V3 shift " + (i+1) + "/" + shifts.size());
+                LOG.debug("\n≡ƒôï Processing V3 shift " + (i+1) + "/" + shifts.size());
                 
                 try {
                     // Call the pure Java V3 logic directly
@@ -12632,7 +12633,7 @@ public class ShiftApp {
                     errorResult.put("status", "error");
                     errorResult.put("error_message", e.getMessage());
                     shiftResults.add(errorResult);
-                    e.printStackTrace();
+                    LOG.error("Exception caught", e);
                 }
             }
 
@@ -12645,7 +12646,21 @@ public class ShiftApp {
                     .filter(r -> "error".equals(r.get("status")))
                     .count());
             overallStats.put("total_assignments_made", totalAssignments);
-            overallStats.put("total_working_days", totalWorkingDays);
+            
+            // Calculate distinct working days across all shifts in the batch
+            java.util.Set<String> uniqueDates = new java.util.HashSet<>();
+            for (Map<String, Object> shift : shifts) {
+                String startDate = (String) shift.get("start_date");
+                String endDate = (String) shift.get("end_date");
+                if (startDate != null) {
+                    java.time.LocalDate start = java.time.LocalDate.parse(startDate);
+                    java.time.LocalDate end = (endDate != null) ? java.time.LocalDate.parse(endDate) : start;
+                    for (java.time.LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
+                        uniqueDates.add(d.toString());
+                    }
+                }
+            }
+            overallStats.put("total_working_days", uniqueDates.size());
             overallStats.put("total_skipped_assignments", totalSkipped);
             overallStats.put("total_solver_time_seconds", totalSolverTime);
 
@@ -12662,16 +12677,16 @@ public class ShiftApp {
                     overallStats.get("successful_shifts"),
                     overallStats.get("failed_shifts"),
                     totalAssignments,
-                    totalWorkingDays
+                    overallStats.get("total_working_days")
             );
             response.put("summary", summary);
 
-            System.out.println("\n✅ Batch Assignment V3 Complete!");
-            System.out.println(summary);
+            LOG.debug("\nΓ£à Batch Assignment V3 Complete!");
+            LOG.debug(summary);
 
             return Response.ok(response).build();
         } catch (Exception e) {
-            e.printStackTrace();
+            LOG.error("Exception caught", e);
             return Response.status(500).entity(Map.of(
                     "status", "error",
                     "error", "Batch assignment v3 failed: " + e.getMessage(),
@@ -12681,8 +12696,8 @@ public class ShiftApp {
     }
 
     private Map<String, Object> solveShiftV3(Map<String, Object> input) throws Exception {
-        System.out.println("=== POST /shifts/assign-v3 (with dynamic constraints) ===");
-        System.out.println("Input: " + input);
+        LOG.info("=== POST /shifts/assign-v3 (with dynamic constraints) ===");
+        LOG.debug("Input: " + input);
 
             // ============ VALIDATION ============
             @SuppressWarnings("unchecked")
@@ -12886,7 +12901,7 @@ public class ShiftApp {
                 }
 
                 allEmployees.put(employeeId, empInfo);
-                System.out.println("👤 Employee: " + name + " (" + employeeId + ") - Skills: " + empInfo.getSkills());
+                LOG.debug("≡ƒæñ Employee: " + name + " (" + employeeId + ") - Skills: " + empInfo.getSkills());
             }
 
             // ============ CREATE ROLE LIMITS, RATINGS, AND REQUIRED SKILLS ============
@@ -12961,10 +12976,10 @@ public class ShiftApp {
                             empId + "_" + dateStr, empId, emp.getName(), dateStr,
                             emp.getCategory(), emp.getGender(), emp.getDepartment(), emp.getPosition()
                     );
-                    System.out.println("DEBUG EMP: " + emp.getName() + " rating in emp: " + emp.getPerformanceRating());
+                    LOG.debug("DEBUG EMP: " + emp.getName() + " rating in emp: " + emp.getPerformanceRating());
                     entity.setHourlyWage(emp.getHourlyWage());
                     entity.setPerformanceRating(emp.getPerformanceRating());
-                    System.out.println("DEBUG ENTITY: " + entity.getEmployeeId() + " rating in entity: " + entity.getPerformanceRating());
+                    LOG.debug("DEBUG ENTITY: " + entity.getEmployeeId() + " rating in entity: " + entity.getPerformanceRating());
                     entity.setShiftStartStr(startTime);
                     entity.setShiftStartTimeObj(startLocalTime);
                     entity.setShiftEndStr(endTime);
@@ -13066,10 +13081,10 @@ public class ShiftApp {
                 }
             }
 
-            System.out.println("\n📊 V3 Planning summary:");
-            System.out.println("   Total possible: " + totalPossibleAssignments);
-            System.out.println("   Entities to plan: " + planningEntities.size());
-            System.out.println("   Skipped: " + skippedCount);
+            LOG.debug("\n≡ƒôè V3 Planning summary:");
+            LOG.debug("   Total possible: " + totalPossibleAssignments);
+            LOG.debug("   Entities to plan: " + planningEntities.size());
+            LOG.debug("   Skipped: " + skippedCount);
 
             if (!overrideExisting && planningEntities.isEmpty()) {
                 throw new Exception("No employees available for assignment. Skipped count: " + skippedCount);
@@ -13128,15 +13143,15 @@ public class ShiftApp {
             SolverFactory<ShiftScheduleV3> solverFactory = SolverFactory.create(solverConfig);
             Solver<ShiftScheduleV3> solver = solverFactory.buildSolver();
 
-            System.out.println("🔧 Starting V2 solver...");
+            LOG.debug("≡ƒöº Starting V2 solver...");
             long solverStart = System.currentTimeMillis();
             ShiftScheduleV3 solved = solver.solve(problem);
             long solverTimeMs = System.currentTimeMillis() - solverStart;
-            System.out.println("✅ V2 Solver finished in " + solverTimeMs + "ms, score: " + solved.getScore());
+            LOG.debug("Γ£à V2 Solver finished in " + solverTimeMs + "ms, score: " + solved.getScore());
 
             ai.timefold.solver.core.api.score.ScoreManager<ShiftScheduleV3, HardMediumSoftLongScore> scoreManager = ai.timefold.solver.core.api.score.ScoreManager.create(solverFactory);
             String scoreExplanation = scoreManager.explainScore(solved).getSummary();
-            System.out.println("Score Explanation:\n" + scoreExplanation);
+            LOG.debug("Score Explanation:\n" + scoreExplanation);
 
             // ============ PROCESS RESULTS ============
             int assignedCount = 0;
@@ -13170,8 +13185,8 @@ public class ShiftApp {
                 debugLog.add(logMsg + " -> PROCESSED");
 
                 // Save to shiftAssignments
-                List<String> empList = shiftAssignments.computeIfAbsent(d, k -> new HashMap<>())
-                        .computeIfAbsent(s, k -> new ArrayList<>());
+                List<String> empList = shiftAssignments.computeIfAbsent(d, k -> new ConcurrentHashMap<>())
+                        .computeIfAbsent(s, k -> new java.util.concurrent.CopyOnWriteArrayList<>());
                 if (!empList.contains(eid)) {
                     empList.add(eid);
                 }
@@ -13257,13 +13272,8 @@ public class ShiftApp {
                 response.put("required_skills_by_role", requiredSkillsMap);
             }
 
-            if (!skippedPerDate.isEmpty()) {
-                response.put("skipped_by_date", skippedPerDate);
-            }
-
             // Assignment details grouped by date
             response.put("assignments_by_date", assignmentDetails);
-            response.put("debug_log", debugLog);
 
             response.put("message", "Successfully assigned shifts (V3 API)!");
 
