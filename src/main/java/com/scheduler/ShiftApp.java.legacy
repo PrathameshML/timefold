@@ -48,8 +48,8 @@ import ai.timefold.solver.core.api.score.stream.ConstraintCollectors;
 
 import static com.scheduler.ShiftApp.AttendanceService.sendNotification;
 
-@QuarkusMain
-@Path("/")
+//@QuarkusMain
+//@Path("/")
 public class ShiftApp {
     private static final Logger LOG = Logger.getLogger(ShiftApp.class);
 
