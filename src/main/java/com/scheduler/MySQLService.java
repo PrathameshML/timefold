@@ -1,4 +1,3 @@
-
 package com.scheduler;
 
 import org.jboss.logging.Logger;
@@ -22,6 +21,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import javax.sql.DataSource;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 @ApplicationScoped
 public class MySQLService {
@@ -29,15 +29,19 @@ public class MySQLService {
 
     @Inject
     DataSource dataSource;
+
+    @ConfigProperty(name = "scheduler.mode", defaultValue = "full")
+    String schedulerMode;
+
     private static final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
 
     public MySQLService() {
-        LOG.debug("\ud83d\udd04 MySQLService bean created");
+        LOG.debug("\uD83D\uDD04 MySQLService bean created");
     }
 
     @PostConstruct
     public void init() {
-        LOG.debug("\ud83d\udd04 MySQLService CDI initialized");
+        LOG.debug("\uD83D\uDD04 MySQLService CDI initialized");
         this.initializeDatabase();
     }
 
@@ -56,61 +60,43 @@ public class MySQLService {
         String sqlNotifications = "CREATE TABLE IF NOT EXISTS notifications (id VARCHAR(50) PRIMARY KEY,recipient_id VARCHAR(50) NOT NULL,message VARCHAR(500) NOT NULL,type VARCHAR(50) NULL,is_read BOOLEAN DEFAULT FALSE,created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)";
         String sqlConstraintConfig = "CREATE TABLE IF NOT EXISTS constraint_config (constraint_id INT PRIMARY KEY,constraint_name VARCHAR(100) NOT NULL,description VARCHAR(500),enabled BOOLEAN DEFAULT TRUE,severity VARCHAR(10) NOT NULL DEFAULT 'HARD',parameter_value DOUBLE NULL,parameter_name VARCHAR(50) NULL,parameter_value_2 DOUBLE NULL,parameter_name_2 VARCHAR(50) NULL,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)";
         String sqlConstraintConfigV3 = "CREATE TABLE IF NOT EXISTS constraint_config_v3 (constraint_id INT PRIMARY KEY,constraint_name VARCHAR(100) NOT NULL,description VARCHAR(500),enabled BOOLEAN DEFAULT TRUE,severity VARCHAR(10) NOT NULL DEFAULT 'HARD',parameter_value DOUBLE NULL,parameter_name VARCHAR(50) NULL,parameter_value_2 DOUBLE NULL,parameter_name_2 VARCHAR(50) NULL,updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP)";
+        
+        boolean v3Only = "v3-only".equalsIgnoreCase(schedulerMode);
+        
         try (Connection conn = this.getConnection();
              Statement stmt = conn.createStatement();){
-            stmt.execute(sqlEmployees);
+            
             stmt.execute(sql);
-            stmt.execute(sqlConfig);
-            stmt.execute(sqlLeaves);
-            stmt.execute(sqlCoverage);
-            stmt.execute(sqlOvertime);
-            stmt.execute(sqlNotifications);
-            stmt.executeUpdate(sqlConstraintConfig);
             stmt.executeUpdate(sqlConstraintConfigV3);
-            try {
-                stmt.executeUpdate("ALTER TABLE constraint_config ADD COLUMN parameter_value_2 DOUBLE NULL");
-                stmt.executeUpdate("ALTER TABLE constraint_config ADD COLUMN parameter_name_2 VARCHAR(50) NULL");
-            } catch (SQLException e) {
-                // Ignore, columns probably already exist
+            
+            try { stmt.execute("ALTER TABLE shift_assignments ADD COLUMN start_time VARCHAR(5)"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE shift_assignments ADD COLUMN end_time VARCHAR(5)"); } catch (SQLException e) {}
+            
+            if (!v3Only) {
+                stmt.execute(sqlEmployees);
+                stmt.execute(sqlConfig);
+                stmt.execute(sqlLeaves);
+                stmt.execute(sqlCoverage);
+                stmt.execute(sqlOvertime);
+                stmt.execute(sqlNotifications);
+                stmt.executeUpdate(sqlConstraintConfig);
+                try {
+                    stmt.executeUpdate("ALTER TABLE constraint_config ADD COLUMN parameter_value_2 DOUBLE NULL");
+                    stmt.executeUpdate("ALTER TABLE constraint_config ADD COLUMN parameter_name_2 VARCHAR(50) NULL");
+                } catch (SQLException e) {
+                }
+                try {
+                    stmt.executeUpdate("UPDATE constraint_config SET parameter_name_2 = 'breakDurationMinutes' WHERE constraint_id = 9 AND parameter_name_2 IS NULL");
+                } catch (SQLException e) {
+                }
+                try { stmt.execute("ALTER TABLE leave_requests ADD COLUMN type VARCHAR(50)"); } catch (SQLException e) {}
+                try { stmt.execute("ALTER TABLE overtime_records ADD COLUMN data_json JSON"); } catch (SQLException e) {}
+                try { stmt.execute("ALTER TABLE leave_coverage_requests ADD COLUMN data_json JSON"); } catch (SQLException e) {}
             }
-            try {
-                stmt.executeUpdate("UPDATE constraint_config SET parameter_name_2 = 'breakDurationMinutes' WHERE constraint_id = 9 AND parameter_name_2 IS NULL");
-            } catch (SQLException e) {
-                // Ignore
-            }            try {
-                stmt.execute("ALTER TABLE shift_assignments ADD COLUMN start_time VARCHAR(5)");
-            }
-            catch (SQLException sQLException) {
-                // empty catch block
-            }
-            try {
-                stmt.execute("ALTER TABLE shift_assignments ADD COLUMN end_time VARCHAR(5)");
-            }
-            catch (SQLException sQLException) {
-                // empty catch block
-            }
-            try {
-                stmt.execute("ALTER TABLE leave_requests ADD COLUMN type VARCHAR(50)");
-            }
-            catch (SQLException sQLException) {
-                // empty catch block
-            }
-            try {
-                stmt.execute("ALTER TABLE overtime_records ADD COLUMN data_json JSON");
-            }
-            catch (SQLException sQLException) {
-                // empty catch block
-            }
-            try {
-                stmt.execute("ALTER TABLE leave_coverage_requests ADD COLUMN data_json JSON");
-            }
-            catch (SQLException sQLException) {
-                // empty catch block
-            }
-            LOG.debug("\u2705 MySQL tables ready (Expanded Schema)");
+            LOG.debug("MySQL tables ready");
         }
         catch (SQLException e) {
-            LOG.error("\u274c Failed to initialize table: " + e.getMessage());
+            LOG.error("Failed to initialize table: " + e.getMessage());
             LOG.error("Exception caught", e);
         }
     }
@@ -129,7 +115,7 @@ public class MySQLService {
             pstmt.executeUpdate();
         }
         catch (SQLException e) {
-            LOG.error("\u274c Failed to sync employee: " + e.getMessage());
+            LOG.error("Failed to sync employee: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
@@ -139,10 +125,10 @@ public class MySQLService {
         try (Connection conn = this.getConnection();
              Statement stmt = conn.createStatement();){
             stmt.executeUpdate(sql);
-            LOG.debug("\ud83d\uddd1\ufe0f Cleared all employees");
+            LOG.debug("\uD83D\uDDD1\uFE0F Cleared all employees");
         }
         catch (SQLException e) {
-            LOG.error("\u274c Clear employees failed: " + e.getMessage());
+            LOG.error("Clear employees failed: " + e.getMessage());
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
     }
