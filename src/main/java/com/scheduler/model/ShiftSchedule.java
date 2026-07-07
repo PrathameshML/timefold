@@ -4,6 +4,7 @@ import ai.timefold.solver.core.api.domain.solution.PlanningEntityCollectionPrope
 import ai.timefold.solver.core.api.domain.solution.PlanningScore;
 import ai.timefold.solver.core.api.domain.solution.PlanningSolution;
 import ai.timefold.solver.core.api.domain.solution.ProblemFactCollectionProperty;
+import ai.timefold.solver.core.api.domain.solution.ProblemFactProperty;
 import ai.timefold.solver.core.api.domain.valuerange.ValueRangeProvider;
 import ai.timefold.solver.core.api.score.buildin.hardmediumsoftlong.HardMediumSoftLongScore;
 
@@ -26,6 +27,9 @@ public class ShiftSchedule {
     @ProblemFactCollectionProperty
     private List<ConstraintConfig> constraintConfigs;
 
+    @ProblemFactProperty
+    private WageContext wageContext;
+
     @PlanningScore
     private HardMediumSoftLongScore score;
 
@@ -36,12 +40,14 @@ public class ShiftSchedule {
     public ShiftSchedule(List<EmployeeAssignment> assignments, List<String> shiftTypes,
                          List<RoleRequirement> roleRequirements,
                          List<RatingRequirement> ratingRequirements,
-                         List<ConstraintConfig> constraintConfigs) {
+                         List<ConstraintConfig> constraintConfigs,
+                         WageContext wageContext) {
         this.assignments = assignments;
         this.shiftTypes = shiftTypes;
         this.roleRequirements = roleRequirements;
         this.ratingRequirements = ratingRequirements;
         this.constraintConfigs = constraintConfigs;
+        this.wageContext = wageContext;
     }
 
     public List<EmployeeAssignment> getAssignments() { return assignments; }
@@ -52,6 +58,8 @@ public class ShiftSchedule {
     public void setRoleRequirements(List<RoleRequirement> roleRequirements) { this.roleRequirements = roleRequirements; }
     public List<RatingRequirement> getRatingRequirements() { return ratingRequirements; }
     public void setRatingRequirements(List<RatingRequirement> ratingRequirements) { this.ratingRequirements = ratingRequirements; }
+    public WageContext getWageContext() { return wageContext; }
+    public void setWageContext(WageContext wageContext) { this.wageContext = wageContext; }
     public List<ConstraintConfig> getConstraintConfigs() { return constraintConfigs; }
     public void setConstraintConfigs(List<ConstraintConfig> constraintConfigs) { this.constraintConfigs = constraintConfigs; }
     public HardMediumSoftLongScore getScore() { return score; }

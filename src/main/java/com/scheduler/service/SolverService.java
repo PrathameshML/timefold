@@ -21,8 +21,6 @@ public class SolverService {
     private static final Logger LOG = Logger.getLogger(SolverService.class);
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
-    private SolverManager<ShiftSchedule, String> solverManager;
-
     @Inject
     DatabaseService databaseService;
 
@@ -33,15 +31,6 @@ public class SolverService {
     public void init() {
         LOG.debug("SolverService initialized");
         loadConstraintConfigs();
-        
-        ai.timefold.solver.core.config.solver.SolverConfig solverConfig = new ai.timefold.solver.core.config.solver.SolverConfig()
-                .withSolutionClass(ShiftSchedule.class)
-                .withEntityClasses(EmployeeAssignment.class)
-                .withConstraintProviderClass(ShiftConstraintProvider.class)
-                .withTerminationSpentLimit(java.time.Duration.ofSeconds(10));
-                
-        ai.timefold.solver.core.api.solver.SolverFactory<ShiftSchedule> solverFactory = ai.timefold.solver.core.api.solver.SolverFactory.create(solverConfig);
-        this.solverManager = SolverManager.create(solverFactory, new ai.timefold.solver.core.config.solver.SolverManagerConfig());
     }
 
     public void loadConstraintConfigs() {
@@ -126,19 +115,69 @@ public class SolverService {
         List<Map<String, Object>> existingUsers = (List<Map<String, Object>>) input.get("existing_users");
         Map<String, EmployeeInfo> employeeInfoMap = new HashMap<>();
         for (Map<String, Object> u : existingUsers) {
-            String empId = (String) u.get("id");
+            String empId = (String) u.get("employee_id");
             if (empId == null || empId.trim().isEmpty()) continue;
             
             String name = (String) u.get("name");
-            String category = (String) u.get("category");
+            String category = (String) u.get("employeeType");
+            if (category == null) category = "Permanent";
             String role = (String) u.get("role");
             String gender = (String) u.get("gender");
-            double hourlyWage = parseNumber(u.get("hourly_wage")).doubleValue();
+            if (gender == null) gender = "Male";
+            
+            double hourlyWage = parseNumber(u.get("rate")).doubleValue();
+            String unit = (String) u.get("unit");
+            if ("day".equalsIgnoreCase(unit)) {
+                hourlyWage = hourlyWage / 8.0;
+            } else if ("month".equalsIgnoreCase(unit)) {
+                hourlyWage = hourlyWage / (22.0 * 8.0);
+            }
             
             EmployeeInfo emp = new EmployeeInfo(empId, name, category, gender, hourlyWage, "Operations", role);
             emp.setPerformanceRating(parseRating(u.get("rating")));
             employeeInfoMap.put(empId, emp);
         }
+
+        // Optimization Parsing
+        String optimization = input.containsKey("optimization") ? (String) input.get("optimization") : "both";
+        optimization = optimization.toLowerCase();
+        if (!optimization.equals("cost") && !optimization.equals("quality") && !optimization.equals("both")) {
+            optimization = "both";
+        }
+
+        // Setup Active Constraints dynamically
+        List<ConstraintConfig> activeConstraints = new ArrayList<>();
+        for (ConstraintConfig cc : constraintConfigs) {
+            ConstraintConfig copy = new ConstraintConfig(cc.getConstraintId(), cc.getConstraintName(), cc.getDescription(), cc.getSeverity(), cc.getParameterValue(), cc.getParameterName());
+            copy.setEnabled(cc.isEnabled());
+            if (optimization.equals("cost") && copy.getConstraintName().equals("maximizeRating")) {
+                copy.setEnabled(false);
+            } else if (optimization.equals("quality") && copy.getConstraintName().equals("wageOptimization")) {
+                copy.setEnabled(false);
+            }
+            activeConstraints.add(copy);
+        }
+
+        // Average Wage Calculations
+        Map<String, Double> sumPerRole = new HashMap<>();
+        Map<String, Integer> countPerRole = new HashMap<>();
+        for (EmployeeInfo emp : employeeInfoMap.values()) {
+            sumPerRole.merge(emp.getPosition(), emp.getHourlyWage(), Double::sum);
+            countPerRole.merge(emp.getPosition(), 1, Integer::sum);
+        }
+        Map<String, Double> averageWagePerRole = new HashMap<>();
+        for (String role : sumPerRole.keySet()) {
+            averageWagePerRole.put(role, sumPerRole.get(role) / countPerRole.get(role));
+        }
+        WageContext wageContext = new WageContext(averageWagePerRole);
+
+        // Time Limit Formula
+        int totalEntities = employeeInfoMap.size() * dateRange.size();
+        long defaultTimeLimit = 2L + (totalEntities / 20L);
+        long defaultUnimprovedLimit = Math.max(1L, defaultTimeLimit / 4L);
+
+        long timeLimit = input.containsKey("time_limit_seconds") ? ((Number) input.get("time_limit_seconds")).longValue() : defaultTimeLimit;
+        long unimprovedLimit = input.containsKey("unimproved_time_limit_seconds") ? ((Number) input.get("unimproved_time_limit_seconds")).longValue() : defaultUnimprovedLimit;
 
         Map<String, Object> responseData = new HashMap<>();
         responseData.put("status", "success");
@@ -152,10 +191,10 @@ public class SolverService {
             return Map.of("status", "error", "message", "No valid employees provided in existing_users");
         }
 
-        // Get the current active constraints to pass to the solver
-        List<ConstraintConfig> activeConstraints = new ArrayList<>(constraintConfigs);
-
         try {
+            boolean overrideExisting = Boolean.TRUE.equals(input.get("overrideExisting"));
+            int skippedCount = 0;
+            
             // Solve day by day
             for (LocalDate currentDate : dateRange) {
                 String dateStr = currentDate.toString();
@@ -167,6 +206,11 @@ public class SolverService {
                 int assignmentIdSeq = 1;
 
                 for (EmployeeInfo emp : employeeInfoMap.values()) {
+                    if (dbAssignments.containsKey(emp.getId()) && !overrideExisting) {
+                        skippedCount++;
+                        continue;
+                    }
+
                     EmployeeAssignment entity = new EmployeeAssignment(
                             dateStr + "_" + emp.getId() + "_" + assignmentIdSeq++,
                             emp.getId(), emp.getName(), dateStr,
@@ -177,27 +221,38 @@ public class SolverService {
                     entity.setShiftStartStr(startTimeStr);
                     entity.setShiftEndStr(endTimeStr);
                     entity.setLocalDateObj(currentDate);
-                    entity.setActiveConfigs(constraintConfigs);
+                    entity.setActiveConfigs(activeConstraints);
 
-                    // If they already have a shift today in the database, pin them to that shift 
-                    // so Timefold knows they are busy and doesn't assign them to this targetShift
-                    if (dbAssignments.containsKey(emp.getId())) {
-                        entity.setShift(dbAssignments.get(emp.getId()));
-                        entity.setPinned(true);
-                    } else {
-                        entity.setShift(null); // Let Timefold assign
-                        entity.setPinned(false);
-                    }
+                    entity.setShift(null); // Let Timefold assign
+                    entity.setPinned(false);
                     allEntities.add(entity);
                 }
 
-                ShiftSchedule problem = new ShiftSchedule(allEntities, shiftTypes, roleRequirements, ratingRequirements, activeConstraints);
+                if (!overrideExisting && allEntities.isEmpty()) {
+                    throw new jakarta.ws.rs.WebApplicationException(
+                        jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.CONFLICT)
+                            .entity(Map.of(
+                                "status", "error",
+                                "message", "No employees available for assignment. Skipped count: " + skippedCount
+                            )).build()
+                    );
+                }
+
+                ShiftSchedule problem = new ShiftSchedule(allEntities, shiftTypes, roleRequirements, ratingRequirements, activeConstraints, wageContext);
                 problem.setRequestedShiftName(targetShift);
 
-                String jobId = UUID.randomUUID().toString();
-                SolverJob<ShiftSchedule, String> solverJob = solverManager.solve(jobId, problem);
-                
-                ShiftSchedule solution = solverJob.getFinalBestSolution();
+                ai.timefold.solver.core.config.solver.SolverConfig solverConfig = new ai.timefold.solver.core.config.solver.SolverConfig()
+                        .withSolutionClass(ShiftSchedule.class)
+                        .withEntityClasses(EmployeeAssignment.class)
+                        .withConstraintProviderClass(ShiftConstraintProvider.class)
+                        .withTerminationConfig(new ai.timefold.solver.core.config.solver.termination.TerminationConfig()
+                                .withSpentLimit(java.time.Duration.ofSeconds(timeLimit))
+                                .withUnimprovedSpentLimit(java.time.Duration.ofSeconds(unimprovedLimit)));
+
+                ai.timefold.solver.core.api.solver.SolverFactory<ShiftSchedule> solverFactory = ai.timefold.solver.core.api.solver.SolverFactory.create(solverConfig);
+                ai.timefold.solver.core.api.solver.Solver<ShiftSchedule> solver = solverFactory.buildSolver();
+
+                ShiftSchedule solution = solver.solve(problem);
                 
                 List<Map<String, Object>> assignedEmployeesForDay = new ArrayList<>();
                 
@@ -231,7 +286,7 @@ public class SolverService {
                 dayResult.put("score", solution.getScore() != null ? solution.getScore().toString() : "Unknown");
                 assignmentsByDate.add(dayResult);
             }
-        } catch (ExecutionException | InterruptedException e) {
+        } catch (Exception e) {
             LOG.error("Solving failed", e);
             return Map.of("status", "error", "message", "Solving failed: " + e.getMessage());
         }

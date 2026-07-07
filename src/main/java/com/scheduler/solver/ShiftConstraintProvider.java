@@ -77,13 +77,12 @@ public class ShiftConstraintProvider implements ConstraintProvider {
     }
 
     private Constraint everyShiftPlanned(ConstraintFactory constraintFactory) {
-        // In the new architecture, we must incentivize the solver to assign employees,
-        // otherwise it will assign 0 to avoid wage penalties.
-        // We reward ONE_MEDIUM for every assignment so it always prioritizes filling shifts
-        // up to the maxWorkersPerRole (which imposes a HARD penalty if exceeded).
-        return constraintFactory.forEach(EmployeeAssignment.class)
-                .filter(assignment -> isConstraintActive(assignment, "everyShiftPlanned") && assignment.getShift() != null)
-                .rewardLong(HardMediumSoftLongScore.ONE_MEDIUM, assignment -> 1L)
+        return constraintFactory.forEachIncludingNullVars(EmployeeAssignment.class)
+                .groupBy(EmployeeAssignment::getDate, EmployeeAssignment::getPosition, ai.timefold.solver.core.api.score.stream.ConstraintCollectors.sumLong(a -> a.getShift() != null ? 1L : 0L))
+                .join(RoleRequirement.class, Joiners.equal((date, pos, count) -> pos, RoleRequirement::getRoleName))
+                .filter((date, pos, count, req) -> count < req.getMaxWorkers())
+                .penalizeLong(HardMediumSoftLongScore.ONE_MEDIUM, 
+                        (date, pos, count, req) -> (long)(req.getMaxWorkers() - count) * 10000L)
                 .asConstraint("everyShiftPlanned");
     }
 
@@ -100,10 +99,14 @@ public class ShiftConstraintProvider implements ConstraintProvider {
     private Constraint wageOptimization(ConstraintFactory constraintFactory) {
         return constraintFactory.forEach(EmployeeAssignment.class)
                 .filter(assignment -> isConstraintActive(assignment, "wageOptimization") && assignment.getShift() != null)
+                .join(com.scheduler.model.WageContext.class)
                 .penalizeLong(HardMediumSoftLongScore.ONE_SOFT,
-                        assignment -> {
+                        (assignment, wageCtx) -> {
                             double wageMultiplier = getParamValue(assignment, "wageOptimization", 1000.0);
-                            return (long) (assignment.getHourlyWage() * wageMultiplier);
+                            double averageWage = wageCtx.getAverageWagePerRole().getOrDefault(assignment.getPosition(), 1.0);
+                            if (averageWage == 0) averageWage = 1.0;
+                            double wageRatio = assignment.getHourlyWage() / averageWage;
+                            return (long) (wageRatio * wageMultiplier);
                         })
                 .asConstraint("wageOptimization");
     }

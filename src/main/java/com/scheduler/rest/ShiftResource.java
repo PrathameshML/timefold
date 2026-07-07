@@ -49,8 +49,26 @@ public class ShiftResource {
 
     @POST
     @Path("/shifts/batch-assign")
-    public Response batchAssignShifts(List<Map<String, Object>> batchRequests) {
-        LOG.debug("Received batch assignment request with " + batchRequests.size() + " shifts");
+    public Response batchAssignShifts(Map<String, Object> input) {
+        Object shiftsObj = input.get("shifts");
+        if (!(shiftsObj instanceof List)) {
+            return Response.status(400).entity(Map.of(
+                    "error", "Invalid format",
+                    "required", "shifts must be a list of objects"
+            )).build();
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> batchRequests = (List<Map<String, Object>>) shiftsObj;
+
+        if (batchRequests.isEmpty()) {
+            return Response.status(400).entity(Map.of(
+                    "error", "Missing required field",
+                    "required", "shifts array cannot be empty"
+            )).build();
+        }
+
+        LOG.info("Received batch assignment request with " + batchRequests.size() + " shifts");
         if (batchRequests == null || batchRequests.isEmpty()) {
             return Response.status(Response.Status.BAD_REQUEST)
                     .entity(Map.of("status", "error", "message", "Empty batch request list"))
@@ -86,27 +104,7 @@ public class ShiftResource {
         return Response.ok(response).build();
     }
 
-    @POST
-    @Path("/shifts/batch-assign/async")
-    public Response batchAssignShiftsAsync(List<Map<String, Object>> batchRequests) {
-        LOG.debug("Received async batch assignment request with " + batchRequests.size() + " shifts");
-        
-        CompletableFuture.runAsync(() -> {
-            for (Map<String, Object> request : batchRequests) {
-                try {
-                    solverService.solveShift(request);
-                } catch (Exception e) {
-                    LOG.error("Async batch assignment failed for shift: " + request.get("shift_name"), e);
-                }
-            }
-        });
 
-        return Response.accepted(Map.of(
-                "status", "processing",
-                "message", "Batch assignment started in background",
-                "total_requests", batchRequests.size()
-        )).build();
-    }
 
     @GET
     @Path("/constraints")
