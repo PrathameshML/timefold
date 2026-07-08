@@ -69,25 +69,40 @@ public class ShiftResource {
         }
 
         LOG.info("Received batch assignment request with " + batchRequests.size() + " shifts");
-        if (batchRequests == null || batchRequests.isEmpty()) {
-            return Response.status(Response.Status.BAD_REQUEST)
-                    .entity(Map.of("status", "error", "message", "Empty batch request list"))
-                    .build();
-        }
-
         List<Map<String, Object>> results = new ArrayList<>();
-        boolean hasErrors = false;
+        int totalAssignments = 0;
+        int totalSkipped = 0;
+        double totalSolverTime = 0.0;
+        int successfulShifts = 0;
+        int failedShifts = 0;
+        java.util.Set<String> uniqueDates = new java.util.HashSet<>();
 
         for (Map<String, Object> request : batchRequests) {
             try {
                 Map<String, Object> result = solverService.solveShift(request);
                 results.add(result);
+                
                 if ("error".equals(result.get("status"))) {
-                    hasErrors = true;
+                    failedShifts++;
+                } else {
+                    successfulShifts++;
+                    totalAssignments += (int) result.getOrDefault("new_assignments_made", 0);
+                    totalSkipped += (int) result.getOrDefault("skipped_count", 0);
+                    totalSolverTime += ((Number) result.getOrDefault("solver_time_seconds", 0.0)).doubleValue();
+                }
+                
+                String startDate = (String) request.get("start_date");
+                String endDate = (String) request.get("end_date");
+                if (startDate != null) {
+                    java.time.LocalDate start = java.time.LocalDate.parse(startDate);
+                    java.time.LocalDate end = (endDate != null && !endDate.trim().isEmpty()) ? java.time.LocalDate.parse(endDate) : start;
+                    for (java.time.LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
+                        uniqueDates.add(d.toString());
+                    }
                 }
             } catch (Exception e) {
                 LOG.error("Failed to solve shift in batch", e);
-                hasErrors = true;
+                failedShifts++;
                 results.add(Map.of(
                         "status", "error",
                         "message", e.getMessage(),
@@ -96,10 +111,26 @@ public class ShiftResource {
             }
         }
 
+        Map<String, Object> overallStats = new HashMap<>();
+        overallStats.put("total_shifts_processed", batchRequests.size());
+        overallStats.put("successful_shifts", successfulShifts);
+        overallStats.put("failed_shifts", failedShifts);
+        overallStats.put("total_assignments_made", totalAssignments);
+        overallStats.put("total_working_days", uniqueDates.size());
+        overallStats.put("total_skipped_assignments", totalSkipped);
+        overallStats.put("total_solver_time_seconds", totalSolverTime);
+
+        String summary = String.format(
+                "Batch assignment completed. Processed %d shifts. Success: %d, Failed: %d. Total assignments: %d across %d days.",
+                batchRequests.size(), successfulShifts, failedShifts, totalAssignments, uniqueDates.size()
+        );
+
         Map<String, Object> response = new HashMap<>();
-        response.put("status", hasErrors ? "partial_success" : "success");
-        response.put("message", "Processed " + batchRequests.size() + " shift requests");
-        response.put("results", results);
+        response.put("status", "completed");
+        response.put("version", "v3");
+        response.put("overall_statistics", overallStats);
+        response.put("shift_results", results);
+        response.put("summary", summary);
 
         return Response.ok(response).build();
     }

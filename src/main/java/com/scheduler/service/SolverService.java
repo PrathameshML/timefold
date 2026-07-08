@@ -92,12 +92,28 @@ public class SolverService {
             int maxWorkers = parseNumber(roleObj.get("max_workers")).intValue();
             roleRequirements.add(new RoleRequirement(roleName, maxWorkers));
             
-            if (roleObj.containsKey("allowed_ratings")) {
-                List<?> rawRatings = (List<?>) roleObj.get("allowed_ratings");
-                List<Integer> ratings = rawRatings.stream()
-                        .map(this::parseRating)
-                        .collect(Collectors.toList());
-                ratingRequirements.add(new RatingRequirement(roleName, ratings));
+            if (roleObj.containsKey("rating")) {
+                Object ratingObj = roleObj.get("rating");
+                List<Integer> allowedRatings = new ArrayList<>();
+                if (ratingObj instanceof Number) {
+                    int min = ((Number) ratingObj).intValue();
+                    for (int r = min; r <= 5; r++) allowedRatings.add(r);
+                } else if (ratingObj instanceof String) {
+                    String s = ((String) ratingObj).toLowerCase();
+                    if (s.contains("any") || s.contains("all")) {
+                        for (int r = 1; r <= 5; r++) allowedRatings.add(r);
+                    } else {
+                        try { 
+                            int min = Integer.parseInt(s); 
+                            for (int r = min; r <= 5; r++) allowedRatings.add(r); 
+                        } catch (NumberFormatException e) { 
+                            for (int r = 1; r <= 5; r++) allowedRatings.add(r); 
+                        }
+                    }
+                } else {
+                    for (int r = 1; r <= 5; r++) allowedRatings.add(r);
+                }
+                ratingRequirements.add(new RatingRequirement(roleName, allowedRatings));
             } else {
                 ratingRequirements.add(new RatingRequirement(roleName, List.of(3, 4, 5))); // default allowed ratings
             }
@@ -191,9 +207,12 @@ public class SolverService {
             return Map.of("status", "error", "message", "No valid employees provided in existing_users");
         }
 
+        int skippedCount = 0;
+        int totalAssignedCount = 0;
+        long totalSolverTimeMs = 0;
+
         try {
             boolean overrideExisting = Boolean.TRUE.equals(input.get("overrideExisting"));
-            int skippedCount = 0;
             
             // Solve day by day
             for (LocalDate currentDate : dateRange) {
@@ -252,7 +271,9 @@ public class SolverService {
                 ai.timefold.solver.core.api.solver.SolverFactory<ShiftSchedule> solverFactory = ai.timefold.solver.core.api.solver.SolverFactory.create(solverConfig);
                 ai.timefold.solver.core.api.solver.Solver<ShiftSchedule> solver = solverFactory.buildSolver();
 
+                long startMs = System.currentTimeMillis();
                 ShiftSchedule solution = solver.solve(problem);
+                totalSolverTimeMs += (System.currentTimeMillis() - startMs);
                 
                 List<Map<String, Object>> assignedEmployeesForDay = new ArrayList<>();
                 
@@ -276,6 +297,7 @@ public class SolverService {
                         empData.put("hourly_wage", assignment.getHourlyWage());
                         empData.put("gender", assignment.getGender());
                         assignedEmployeesForDay.add(empData);
+                        totalAssignedCount++;
                     }
                 }
 
@@ -292,6 +314,9 @@ public class SolverService {
         }
 
         responseData.put("assignments_by_date", assignmentsByDate);
+        responseData.put("skipped_count", skippedCount);
+        responseData.put("new_assignments_made", totalAssignedCount);
+        responseData.put("solver_time_seconds", totalSolverTimeMs / 1000.0);
         return responseData;
     }
 
