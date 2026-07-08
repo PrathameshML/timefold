@@ -188,7 +188,8 @@ public class SolverService {
         WageContext wageContext = new WageContext(averageWagePerRole);
 
         // Time Limit Formula
-        int totalEntities = employeeInfoMap.size() * dateRange.size();
+        // The solver loops day-by-day, so the problem scale per solver run is just the number of employees.
+        int totalEntities = employeeInfoMap.size(); 
         long defaultTimeLimit = 2L + (totalEntities / 20L);
         long defaultUnimprovedLimit = Math.max(1L, defaultTimeLimit / 4L);
 
