@@ -23,7 +23,7 @@ jobs:
           cache: 'maven'
 
       - name: Build Quarkus Application
-        run: mvn clean package -DskipTests
+        run: mvn clean package -DexcludedGroups=extreme
 
       - name: Copy files to EC2
         uses: appleboy/scp-action@v0.1.4
@@ -43,7 +43,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             echo "Stopping old application..."
-            killall java || true
+            pkill -f quarkus-run.jar || true
             sleep 3
             
             echo "Setting environment variables and starting new application..."

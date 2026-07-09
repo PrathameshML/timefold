@@ -126,6 +126,59 @@ public class DatabaseService {
         }
     }
 
+    public int clearAssignmentsWithFilters(List<String> dates, List<String> shifts, List<String> employeeIds) {
+        StringBuilder sql = new StringBuilder("DELETE FROM shift_assignments WHERE 1=1");
+        List<Object> params = new ArrayList<>();
+
+        if (dates != null && !dates.isEmpty()) {
+            sql.append(" AND assignment_date IN (");
+            for (int i = 0; i < dates.size(); i++) {
+                sql.append(i == 0 ? "?" : ", ?");
+                params.add(Date.valueOf(dates.get(i)));
+            }
+            sql.append(")");
+        }
+
+        if (shifts != null && !shifts.isEmpty()) {
+            sql.append(" AND shift_name IN (");
+            for (int i = 0; i < shifts.size(); i++) {
+                sql.append(i == 0 ? "?" : ", ?");
+                params.add(shifts.get(i));
+            }
+            sql.append(")");
+        }
+
+        if (employeeIds != null && !employeeIds.isEmpty()) {
+            sql.append(" AND employee_id IN (");
+            for (int i = 0; i < employeeIds.size(); i++) {
+                sql.append(i == 0 ? "?" : ", ?");
+                params.add(employeeIds.get(i));
+            }
+            sql.append(")");
+        }
+
+        // If no filters provided, prevent accidental clear-all (use clearAllAssignments instead)
+        if (params.isEmpty()) {
+            throw new IllegalArgumentException("Must provide at least one filter (date, shift, or employeeId) to clear specific assignments.");
+        }
+
+        try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql.toString())) {
+            for (int i = 0; i < params.size(); i++) {
+                if (params.get(i) instanceof Date) {
+                    pstmt.setDate(i + 1, (Date) params.get(i));
+                } else {
+                    pstmt.setString(i + 1, (String) params.get(i));
+                }
+            }
+            int deletedCount = pstmt.executeUpdate();
+            LOG.debug("Cleared " + deletedCount + " assignments using filters.");
+            return deletedCount;
+        } catch (SQLException e) {
+            LOG.error("Failed to clear assignments with filters: " + e.getMessage(), e);
+            throw new RuntimeException("Database error: " + e.getMessage(), e);
+        }
+    }
+
     /**
      * Fetches all assignments for a specific date across all shifts.
      * Returns: Map<employeeId, shiftName>

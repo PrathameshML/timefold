@@ -164,4 +164,180 @@ public class ShiftResource {
                     .build();
         }
     }
+
+    @POST
+    @Path("/shifts/manual-assign")
+    public Response manualAssignShift(Map<String, Object> input) {
+        LOG.debug("Received manual shift assignment request");
+        try {
+            if (input == null) {
+                return Response.status(400).entity(Map.of("error", "Request body cannot be empty")).build();
+            }
+            String date = (String) input.get("date");
+            // Match legacy key "shift" but fallback to "shift_name" for flexibility
+            String shiftName = (String) input.getOrDefault("shift", input.get("shift_name"));
+            boolean overrideExisting = Boolean.TRUE.equals(input.get("overrideExisting"));
+            
+            if (date == null || shiftName == null) {
+                return Response.status(400).entity(Map.of("error", "Missing required fields: date, shift (or shift_name)")).build();
+            }
+
+            try {
+                java.sql.Date.valueOf(date);
+            } catch (IllegalArgumentException e) {
+                return Response.status(400).entity(Map.of("error", "Invalid date format: " + date + ". Expected YYYY-MM-DD")).build();
+            }
+
+            Object employeesObj = input.get("employees");
+            if (!(employeesObj instanceof List)) {
+                return Response.status(400).entity(Map.of("error", "employees must be a list of objects")).build();
+            }
+            
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> employees = (List<Map<String, Object>>) employeesObj;
+            
+            // 1. Check for Duplicate Employee IDs in the request body
+            java.util.Set<String> uniqueIds = new java.util.HashSet<>();
+            List<Map<String, Object>> duplicateDetails = new ArrayList<>();
+            for (Map<String, Object> emp : employees) {
+                String empId = (String) emp.get("employee_id");
+                if (empId != null && !uniqueIds.add(empId)) {
+                    duplicateDetails.add(Map.of("employee_id", empId, "name", emp.getOrDefault("name", "Unknown")));
+                }
+            }
+            if (!duplicateDetails.isEmpty()) {
+                return Response.status(400).entity(Map.of(
+                    "status", "error",
+                    "error_type", "DUPLICATE_EMPLOYEE_IDS",
+                    "message", "Duplicate employee IDs found in request",
+                    "duplicates", duplicateDetails
+                )).build();
+            }
+
+            // 2. Load existing assignments to prevent double-booking across shifts
+            Map<String, String> existingAssignments = databaseService.loadAssignmentsForDate(date);
+            
+            int successCount = 0;
+            int skipCount = 0;
+            List<Map<String, Object>> assignedEmployees = new ArrayList<>();
+            List<Map<String, Object>> skippedEmployees = new ArrayList<>();
+
+            for (Map<String, Object> emp : employees) {
+                String empId = (String) emp.get("employee_id");
+                if (empId == null) continue;
+                String name = (String) emp.getOrDefault("name", "Unknown");
+                
+                // If already assigned and we are not forcing an override, skip them!
+                if (!overrideExisting && existingAssignments.containsKey(empId)) {
+                    skippedEmployees.add(Map.of(
+                        "employee_id", empId,
+                        "name", name,
+                        "reason", "Already assigned to " + existingAssignments.get(empId) + " on " + date
+                    ));
+                    skipCount++;
+                    continue;
+                }
+                
+                String role = (String) emp.getOrDefault("role", "Unknown");
+                String category = (String) emp.getOrDefault("employee_category", "Unknown");
+                String gender = (String) emp.getOrDefault("gender", "Unknown");
+                int rating = emp.containsKey("rating") ? ((Number) emp.get("rating")).intValue() : 0;
+                String startTime = (String) emp.get("start_time");
+                String endTime = (String) emp.get("end_time");
+                
+                databaseService.syncAssignment(date, shiftName, empId, name, role, category, gender, rating, startTime, endTime);
+                assignedEmployees.add(Map.of("employee_id", empId, "name", name, "gender", gender));
+                successCount++;
+            }
+            
+            // 3. Match legacy conflict behavior if everyone was skipped
+            if (successCount == 0 && skipCount > 0) {
+                return Response.status(409).entity(Map.of( // 409 Conflict
+                    "status", "error",
+                    "error_type", "ALL_EMPLOYEES_ALREADY_ASSIGNED",
+                    "message", "No employees were assigned - all requested employees already have assignments on " + date,
+                    "date", date,
+                    "shift", shiftName,
+                    "total_requested", employees.size(),
+                    "skipped_count", skipCount,
+                    "skipped_employees", skippedEmployees
+                )).build();
+            }
+            
+            Map<String, Object> response = new HashMap<>();
+            response.put("status", "success");
+            response.put("message", String.format("Assigned %d out of %d employees", successCount, employees.size()));
+            response.put("date", date);
+            response.put("shift", shiftName);
+            response.put("total_requested", employees.size());
+            response.put("assigned_count", successCount);
+            response.put("skipped_count", skipCount);
+            if (!assignedEmployees.isEmpty()) response.put("assigned_employees", assignedEmployees);
+            if (!skippedEmployees.isEmpty()) {
+                response.put("skipped_employees", skippedEmployees);
+                response.put("warning", skipCount + " employee(s) were skipped because they already have assignments on " + date);
+            }
+            
+            return Response.ok(response).build();
+        } catch (Exception e) {
+            LOG.error("Failed to manual assign", e);
+            return Response.serverError().entity(Map.of("status", "error", "message", e.getMessage())).build();
+        }
+    }
+
+    @DELETE
+    @Path("/shifts/clear")
+    public Response clearAssignments(Map<String, Object> input) {
+        LOG.debug("=== DELETE /shifts/clear ===");
+        try {
+            if (input == null) {
+                return Response.status(400).entity(Map.of("error", "Request body cannot be empty")).build();
+            }
+            // ============ PARSE INPUT - Handle legacy formats ============
+            Object daysObj = input.get("days");
+            Object dayObj = input.get("day");
+            Object shiftsObj = input.get("shifts");
+            Object shiftObj = input.get("shift");
+            Object employeesObj = input.get("employees");
+
+            List<String> dates = new ArrayList<>();
+            if (daysObj instanceof List) dates.addAll((List<String>) daysObj);
+            else if (daysObj instanceof String) dates.add((String) daysObj);
+            if (dayObj instanceof String) dates.add((String) dayObj);
+            
+            // Validate dates early to provide a 400 instead of a 500 error
+            for (String d : dates) {
+                try {
+                    java.sql.Date.valueOf(d);
+                } catch (IllegalArgumentException e) {
+                    return Response.status(400).entity(Map.of("error", "Invalid date format: " + d + ". Expected YYYY-MM-DD")).build();
+                }
+            }
+
+            List<String> shifts = new ArrayList<>();
+            if (shiftsObj instanceof List) shifts.addAll((List<String>) shiftsObj);
+            else if (shiftsObj instanceof String) shifts.add((String) shiftsObj);
+            if (shiftObj instanceof String) shifts.add((String) shiftObj);
+
+            List<String> employeeIds = new ArrayList<>();
+            if (employeesObj instanceof List) employeeIds.addAll((List<String>) employeesObj);
+            else if (employeesObj instanceof String) employeeIds.add((String) employeesObj);
+
+            if (dates.isEmpty() && shifts.isEmpty() && employeeIds.isEmpty()) {
+                return Response.status(400).entity(Map.of(
+                    "error", "Must provide at least one filter in JSON body (day/days, shift/shifts, employees)"
+                )).build();
+            }
+            
+            int deletedCount = databaseService.clearAssignmentsWithFilters(dates, shifts, employeeIds);
+            return Response.ok(Map.of(
+                "status", "success",
+                "message", "Cleared " + deletedCount + " assignments",
+                "deleted_count", deletedCount
+            )).build();
+        } catch (Exception e) {
+            LOG.error("Failed to clear assignments", e);
+            return Response.serverError().entity(Map.of("status", "error", "message", e.getMessage())).build();
+        }
+    }
 }
