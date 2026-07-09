@@ -17,7 +17,10 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 
+import org.junit.jupiter.api.Tag;
+
 @QuarkusTest
+@Tag("extreme")
 public class SolverQualityBenchmarkTest {
     
     private static final Logger LOG = Logger.getLogger(SolverQualityBenchmarkTest.class);
