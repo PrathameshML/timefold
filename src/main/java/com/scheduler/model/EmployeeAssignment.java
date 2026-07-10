@@ -27,7 +27,6 @@ public class EmployeeAssignment {
     private Set<String> skills = new HashSet<>();
     private String department;
     private String position;
-    private String shiftColor;
     private String requestedShift;
     private String shiftStartStr;
     private String shiftEndStr;
@@ -63,27 +62,6 @@ public class EmployeeAssignment {
         this.gender = gender;
         this.department = department;
         this.position = position;
-
-        // Assign color based on department
-        switch (department) {
-            case "Development":
-                this.shiftColor = "#4CAF50";
-                break;
-            case "Testing":
-                this.shiftColor = "#FF9800";
-                break;
-            case "DevOps":
-                this.shiftColor = "#2196F3";
-                break;
-            case "Support":
-                this.shiftColor = "#9C27B0";
-                break;
-            case "Management":
-                this.shiftColor = "#F44336";
-                break;
-            default:
-                this.shiftColor = "#607D8B";
-        }
     }
 
     public String getId() { return id; }
@@ -106,8 +84,6 @@ public class EmployeeAssignment {
     public void setDepartment(String department) { this.department = department; }
     public String getPosition() { return position; }
     public void setPosition(String position) { this.position = position; }
-    public String getShiftColor() { return shiftColor; }
-    public void setShiftColor(String shiftColor) { this.shiftColor = shiftColor; }
     public String getRequestedShift() { return requestedShift; }
     public void setRequestedShift(String requestedShift) { this.requestedShift = requestedShift; }
     public String getShiftStartStr() { return shiftStartStr; }

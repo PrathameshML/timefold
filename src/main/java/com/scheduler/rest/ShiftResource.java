@@ -12,8 +12,11 @@ import org.jboss.logging.Logger;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 
 @Path("/")
@@ -36,7 +39,8 @@ public class ShiftResource {
         try {
             Map<String, Object> result = solverService.solveShift(input);
             if ("error".equals(result.get("status"))) {
-                return Response.status(Response.Status.BAD_REQUEST).entity(result).build();
+                int errorCode = result.containsKey("error_code") ? (int) result.get("error_code") : Response.Status.BAD_REQUEST.getStatusCode();
+                return Response.status(errorCode).entity(result).build();
             }
             return Response.ok(result).build();
         } catch (Exception e) {
@@ -120,17 +124,11 @@ public class ShiftResource {
         overallStats.put("total_skipped_assignments", totalSkipped);
         overallStats.put("total_solver_time_seconds", totalSolverTime);
 
-        String summary = String.format(
-                "Batch assignment completed. Processed %d shifts. Success: %d, Failed: %d. Total assignments: %d across %d days.",
-                batchRequests.size(), successfulShifts, failedShifts, totalAssignments, uniqueDates.size()
-        );
-
         Map<String, Object> response = new HashMap<>();
         response.put("status", "completed");
         response.put("version", "v3");
         response.put("overall_statistics", overallStats);
         response.put("shift_results", results);
-        response.put("summary", summary);
 
         return Response.ok(response).build();
     }
@@ -202,7 +200,7 @@ public class ShiftResource {
             for (Map<String, Object> emp : employees) {
                 String empId = (String) emp.get("employee_id");
                 if (empId != null && !uniqueIds.add(empId)) {
-                    duplicateDetails.add(Map.of("employee_id", empId, "name", emp.getOrDefault("name", "Unknown")));
+                    duplicateDetails.add(Map.of("employee_id", empId, "name", emp.get("name")));
                 }
             }
             if (!duplicateDetails.isEmpty()) {
@@ -225,7 +223,7 @@ public class ShiftResource {
             for (Map<String, Object> emp : employees) {
                 String empId = (String) emp.get("employee_id");
                 if (empId == null) continue;
-                String name = (String) emp.getOrDefault("name", "Unknown");
+                String name = (String) emp.get("name");
                 
                 // If already assigned and we are not forcing an override, skip them!
                 if (!overrideExisting && existingAssignments.containsKey(empId)) {
@@ -238,14 +236,15 @@ public class ShiftResource {
                     continue;
                 }
                 
-                String role = (String) emp.getOrDefault("role", "Unknown");
-                String category = (String) emp.getOrDefault("employee_category", "Unknown");
-                String gender = (String) emp.getOrDefault("gender", "Unknown");
+                String role = (String) emp.get("role");
+                String category = (String) emp.get("employee_category");
+                String gender = (String) emp.get("gender");
                 int rating = emp.containsKey("rating") ? ((Number) emp.get("rating")).intValue() : 0;
                 String startTime = (String) emp.get("start_time");
                 String endTime = (String) emp.get("end_time");
+                double hourlyWage = emp.containsKey("hourly_wage") ? ((Number) emp.get("hourly_wage")).doubleValue() : 0.0;
                 
-                databaseService.syncAssignment(date, shiftName, empId, name, role, category, gender, rating, startTime, endTime);
+                databaseService.syncAssignment(date, shiftName, empId, name, role, category, gender, rating, startTime, endTime, hourlyWage);
                 assignedEmployees.add(Map.of("employee_id", empId, "name", name, "gender", gender));
                 successCount++;
             }
@@ -337,6 +336,143 @@ public class ShiftResource {
             )).build();
         } catch (Exception e) {
             LOG.error("Failed to clear assignments", e);
+            return Response.serverError().entity(Map.of("status", "error", "message", e.getMessage())).build();
+        }
+    }
+
+    @GET
+    @Path("/shifts")
+    public Response getShifts(@QueryParam("date") String dateStr) {
+        try {
+            LOG.debug("=== GET /shifts called ===");
+            if (dateStr != null && !dateStr.trim().isEmpty()) {
+                try {
+                    java.sql.Date.valueOf(dateStr.trim());
+                } catch (IllegalArgumentException e) {
+                    return Response.status(400).entity(Map.of("error", "Invalid date format: " + dateStr + ". Expected YYYY-MM-DD")).build();
+                }
+            }
+            List<Map<String, Object>> assignments = databaseService.getAssignments(dateStr);
+            
+            if (dateStr != null && !dateStr.trim().isEmpty()) {
+                // Group by shift
+                Map<String, List<Map<String, Object>>> groupedByShift = new HashMap<>();
+                for (Map<String, Object> a : assignments) {
+                    String shiftName = (String) a.get("shift_name");
+                    groupedByShift.computeIfAbsent(shiftName, k -> new ArrayList<>()).add(a);
+                }
+                
+                List<Map<String, Object>> slots = new ArrayList<>();
+                double totalHourlyCost = 0;
+                int totalAssigned = assignments.size();
+                
+                for (Map.Entry<String, List<Map<String, Object>>> entry : groupedByShift.entrySet()) {
+                    String shiftName = entry.getKey();
+                    List<Map<String, Object>> emps = entry.getValue();
+                    
+                    Map<String, Object> slot = new HashMap<>();
+                    slot.put("date", dateStr);
+                    slot.put("name", shiftName);
+                    
+                    List<Map<String, Object>> employees = new ArrayList<>();
+                    double shiftHourlyCost = 0;
+                    
+                    for (Map<String, Object> empRow : emps) {
+                        Map<String, Object> emp = new HashMap<>();
+                        emp.put("id", empRow.get("employee_id"));
+                        emp.put("name", empRow.get("employee_name"));
+                        emp.put("role", empRow.get("employee_role"));
+                        emp.put("rating", empRow.get("rating"));
+                        emp.put("gender", empRow.get("gender"));
+                        
+                        double wage = empRow.get("hourly_wage") != null ? ((Number) empRow.get("hourly_wage")).doubleValue() : 0.0;
+                        emp.put("hourlyWage", wage);
+                        
+                        employees.add(emp);
+                        shiftHourlyCost += wage;
+                    }
+                    
+                    slot.put("employees", employees);
+                    slot.put("employeeCount", employees.size());
+                    slot.put("hourlyCost", shiftHourlyCost);
+                    slot.put("dailyCost", shiftHourlyCost * 8);
+                    
+                    totalHourlyCost += shiftHourlyCost;
+                    slots.add(slot);
+                }
+                
+                return Response.ok(Map.of(
+                    "date", dateStr,
+                    "slots", slots,
+                    "totalAssigned", totalAssigned,
+                    "totalHourlyCost", totalHourlyCost,
+                    "totalDailyCost", totalHourlyCost * 8,
+                    "shiftsCount", groupedByShift.size()
+                )).build();
+            } else {
+                // Return all assignments grouped by date and shift
+                Map<String, Map<String, List<Map<String, Object>>>> groupedByDateAndShift = new HashMap<>();
+                for (Map<String, Object> a : assignments) {
+                    String date = (String) a.get("date");
+                    String shiftName = (String) a.get("shift_name");
+                    groupedByDateAndShift.computeIfAbsent(date, k -> new HashMap<>())
+                            .computeIfAbsent(shiftName, k -> new ArrayList<>()).add(a);
+                }
+                
+                List<Map<String, Object>> allSlots = new ArrayList<>();
+                List<String> sortedDates = new ArrayList<>(groupedByDateAndShift.keySet());
+                Collections.sort(sortedDates);
+                
+                int totalAssignments = 0;
+                Map<String, Integer> shiftCounts = new HashMap<>();
+                Set<String> uniqueEmployees = new HashSet<>();
+                
+                for (String date : sortedDates) {
+                    for (Map.Entry<String, List<Map<String, Object>>> entry : groupedByDateAndShift.get(date).entrySet()) {
+                        String shiftName = entry.getKey();
+                        List<Map<String, Object>> emps = entry.getValue();
+                        
+                        Map<String, Object> slot = new HashMap<>();
+                        slot.put("date", date);
+                        slot.put("name", shiftName);
+                        
+                        List<Map<String, Object>> employees = new ArrayList<>();
+                        for (Map<String, Object> empRow : emps) {
+                            Map<String, Object> emp = new HashMap<>();
+                            String empId = (String) empRow.get("employee_id");
+                            emp.put("id", empId);
+                            emp.put("name", empRow.get("employee_name"));
+                            emp.put("role", empRow.get("employee_role"));
+                            emp.put("gender", empRow.get("gender"));
+                            
+                            employees.add(emp);
+                            uniqueEmployees.add(empId);
+                        }
+                        
+                        slot.put("employees", employees);
+                        slot.put("employeeCount", employees.size());
+                        allSlots.add(slot);
+                        
+                        totalAssignments += employees.size();
+                        shiftCounts.put(shiftName, shiftCounts.getOrDefault(shiftName, 0) + employees.size());
+                    }
+                }
+                
+                Map<String, Object> statistics = new HashMap<>();
+                statistics.put("totalSlots", allSlots.size());
+                statistics.put("totalAssignments", totalAssignments);
+                statistics.put("uniqueDates", sortedDates.size());
+                statistics.put("assignmentsByShift", shiftCounts);
+                statistics.put("totalEmployees", uniqueEmployees.size());
+                
+                return Response.ok(Map.of(
+                    "slots", allSlots,
+                    "statistics", statistics,
+                    "datesWithAssignments", sortedDates
+                )).build();
+            }
+        } catch (Exception e) {
+            LOG.error("Failed to fetch shifts", e);
             return Response.serverError().entity(Map.of("status", "error", "message", e.getMessage())).build();
         }
     }

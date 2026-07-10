@@ -136,10 +136,8 @@ public class SolverService {
             
             String name = (String) u.get("name");
             String category = (String) u.get("employeeType");
-            if (category == null) category = "Permanent";
             String role = (String) u.get("role");
             String gender = (String) u.get("gender");
-            if (gender == null) gender = "Male";
             
             double hourlyWage = parseNumber(u.get("rate")).doubleValue();
             String unit = (String) u.get("unit");
@@ -249,12 +247,10 @@ public class SolverService {
                 }
 
                 if (!overrideExisting && allEntities.isEmpty()) {
-                    throw new jakarta.ws.rs.WebApplicationException(
-                        jakarta.ws.rs.core.Response.status(jakarta.ws.rs.core.Response.Status.CONFLICT)
-                            .entity(Map.of(
-                                "status", "error",
-                                "message", "No employees available for assignment. Skipped count: " + skippedCount
-                            )).build()
+                    return Map.of(
+                        "status", "error",
+                        "error_code", 409,
+                        "message", "No employees available for assignment. Skipped count: " + skippedCount
                     );
                 }
 
@@ -286,7 +282,7 @@ public class SolverService {
                         databaseService.syncAssignment(
                             dateStr, targetShift, assignment.getEmployeeId(), assignment.getEmployeeName(),
                             assignment.getPosition(), assignment.getCategory(), assignment.getGender(),
-                            assignment.getPerformanceRating(), startTimeStr, endTimeStr
+                            assignment.getPerformanceRating(), startTimeStr, endTimeStr, assignment.getHourlyWage()
                         );
                         
                         Map<String, Object> empData = new HashMap<>();

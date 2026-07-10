@@ -44,6 +44,7 @@ public class DatabaseService {
                 "rating INT NULL," +
                 "start_time VARCHAR(5) NULL," +
                 "end_time VARCHAR(5) NULL," +
+                "hourly_wage DOUBLE NULL," +
                 "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP," +
                 "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP," +
                 "UNIQUE KEY unique_assignment (assignment_date, shift_name, employee_id))";
@@ -67,6 +68,7 @@ public class DatabaseService {
             // Add columns safely if migrating from older versions
             try { stmt.execute("ALTER TABLE shift_assignments ADD COLUMN start_time VARCHAR(5)"); } catch (SQLException e) {}
             try { stmt.execute("ALTER TABLE shift_assignments ADD COLUMN end_time VARCHAR(5)"); } catch (SQLException e) {}
+            try { stmt.execute("ALTER TABLE shift_assignments ADD COLUMN hourly_wage DOUBLE"); } catch (SQLException e) {}
             
             LOG.debug("V3 Database tables ready");
         } catch (SQLException e) {
@@ -78,12 +80,12 @@ public class DatabaseService {
 
     public void syncAssignment(String date, String shift, String employeeId, String employeeName, 
                                String employeeRole, String employeeCategory, String gender, 
-                               int rating, String startTime, String endTime) {
-        String sql = "INSERT INTO shift_assignments (assignment_date, shift_name, employee_id, employee_name, employee_role, employee_category, gender, rating, start_time, end_time) " +
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
+                               int rating, String startTime, String endTime, double hourlyWage) {
+        String sql = "INSERT INTO shift_assignments (assignment_date, shift_name, employee_id, employee_name, employee_role, employee_category, gender, rating, start_time, end_time, hourly_wage) " +
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) " +
                 "ON DUPLICATE KEY UPDATE employee_name = VALUES(employee_name), employee_role = VALUES(employee_role), " +
                 "employee_category = VALUES(employee_category), gender = VALUES(gender), rating = VALUES(rating), " +
-                "start_time = VALUES(start_time), end_time = VALUES(end_time)";
+                "start_time = VALUES(start_time), end_time = VALUES(end_time), hourly_wage = VALUES(hourly_wage)";
         
         try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setDate(1, Date.valueOf(date));
@@ -96,11 +98,48 @@ public class DatabaseService {
             pstmt.setInt(8, rating);
             pstmt.setString(9, startTime);
             pstmt.setString(10, endTime);
+            pstmt.setDouble(11, hourlyWage);
             pstmt.executeUpdate();
         } catch (SQLException e) {
             LOG.error("Failed to sync assignment: " + e.getMessage(), e);
             throw new RuntimeException("Database error: " + e.getMessage(), e);
         }
+    }
+
+    public List<Map<String, Object>> getAssignments(String date) {
+        List<Map<String, Object>> assignments = new ArrayList<>();
+        StringBuilder sql = new StringBuilder("SELECT * FROM shift_assignments");
+        
+        if (date != null && !date.trim().isEmpty()) {
+            sql.append(" WHERE assignment_date = ?");
+        }
+        
+        try (Connection conn = getConnection(); PreparedStatement pstmt = conn.prepareStatement(sql.toString())) {
+            if (date != null && !date.trim().isEmpty()) {
+                pstmt.setDate(1, Date.valueOf(date.trim()));
+            }
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    Map<String, Object> row = new HashMap<>();
+                    row.put("id", rs.getInt("id"));
+                    row.put("date", rs.getDate("assignment_date").toString());
+                    row.put("shift_name", rs.getString("shift_name"));
+                    row.put("employee_id", rs.getString("employee_id"));
+                    row.put("employee_name", rs.getString("employee_name"));
+                    row.put("employee_role", rs.getString("employee_role"));
+                    row.put("employee_category", rs.getString("employee_category"));
+                    row.put("gender", rs.getString("gender"));
+                    row.put("rating", rs.getInt("rating"));
+                    row.put("start_time", rs.getString("start_time"));
+                    row.put("end_time", rs.getString("end_time"));
+                    row.put("hourly_wage", rs.getDouble("hourly_wage"));
+                    assignments.add(row);
+                }
+            }
+        } catch (SQLException e) {
+            LOG.error("Failed to fetch assignments: " + e.getMessage(), e);
+        }
+        return assignments;
     }
 
     public void clearAllAssignments() {
