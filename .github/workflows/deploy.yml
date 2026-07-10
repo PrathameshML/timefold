@@ -43,7 +43,7 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
             echo "Stopping old application..."
-            pkill -f "[q]uarkus-run.jar" || true
+            fuser -k 8083/tcp || true
             sleep 3
             
             echo "Setting environment variables and starting new application..."
