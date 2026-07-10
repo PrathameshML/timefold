@@ -213,6 +213,16 @@ public class SolverService {
         try {
             boolean overrideExisting = Boolean.TRUE.equals(input.get("overrideExisting"));
             
+            ai.timefold.solver.core.config.solver.SolverConfig solverConfig = new ai.timefold.solver.core.config.solver.SolverConfig()
+                    .withSolutionClass(ShiftSchedule.class)
+                    .withEntityClasses(EmployeeAssignment.class)
+                    .withConstraintProviderClass(ShiftConstraintProvider.class)
+                    .withTerminationConfig(new ai.timefold.solver.core.config.solver.termination.TerminationConfig()
+                            .withSpentLimit(java.time.Duration.ofSeconds(timeLimit))
+                            .withUnimprovedSpentLimit(java.time.Duration.ofSeconds(unimprovedLimit)));
+
+            ai.timefold.solver.core.api.solver.SolverFactory<ShiftSchedule> solverFactory = ai.timefold.solver.core.api.solver.SolverFactory.create(solverConfig);
+
             // Solve day by day
             for (LocalDate currentDate : dateRange) {
                 String dateStr = currentDate.toString();
@@ -257,15 +267,6 @@ public class SolverService {
                 ShiftSchedule problem = new ShiftSchedule(allEntities, shiftTypes, roleRequirements, ratingRequirements, activeConstraints, wageContext);
                 problem.setRequestedShiftName(targetShift);
 
-                ai.timefold.solver.core.config.solver.SolverConfig solverConfig = new ai.timefold.solver.core.config.solver.SolverConfig()
-                        .withSolutionClass(ShiftSchedule.class)
-                        .withEntityClasses(EmployeeAssignment.class)
-                        .withConstraintProviderClass(ShiftConstraintProvider.class)
-                        .withTerminationConfig(new ai.timefold.solver.core.config.solver.termination.TerminationConfig()
-                                .withSpentLimit(java.time.Duration.ofSeconds(timeLimit))
-                                .withUnimprovedSpentLimit(java.time.Duration.ofSeconds(unimprovedLimit)));
-
-                ai.timefold.solver.core.api.solver.SolverFactory<ShiftSchedule> solverFactory = ai.timefold.solver.core.api.solver.SolverFactory.create(solverConfig);
                 ai.timefold.solver.core.api.solver.Solver<ShiftSchedule> solver = solverFactory.buildSolver();
 
                 long startMs = System.currentTimeMillis();
