@@ -1,8 +1,10 @@
 package com.scheduler;
 
 import com.scheduler.service.SolverService;
+import com.scheduler.service.DatabaseService;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jboss.logging.Logger;
 
@@ -24,6 +26,14 @@ public class DeterminismVerificationTest {
 
     @Inject
     SolverService solverService;
+
+    @Inject
+    DatabaseService databaseService;
+
+    @BeforeEach
+    public void cleanDatabase() {
+        databaseService.clearAllAssignments();
+    }
 
     @Test
     public void testAbsoluteDeterminism100Runs() {
@@ -64,7 +74,6 @@ public class DeterminismVerificationTest {
         req.put("start_time", "09:00");
         req.put("end_time", "17:00");
         req.put("optimization", "both");
-        req.put("overrideExisting", true);
         
         req.put("roles", List.of(
             Map.of("role_name", "Developer", "max_workers", 3, "rating", 3)

@@ -174,7 +174,6 @@ public class ShiftResource {
             String date = (String) input.get("date");
             // Match legacy key "shift" but fallback to "shift_name" for flexibility
             String shiftName = (String) input.getOrDefault("shift", input.get("shift_name"));
-            boolean overrideExisting = Boolean.TRUE.equals(input.get("overrideExisting"));
             
             if (date == null || shiftName == null) {
                 return Response.status(400).entity(Map.of("error", "Missing required fields: date, shift (or shift_name)")).build();
@@ -225,8 +224,8 @@ public class ShiftResource {
                 if (empId == null) continue;
                 String name = (String) emp.get("name");
                 
-                // If already assigned and we are not forcing an override, skip them!
-                if (!overrideExisting && existingAssignments.containsKey(empId)) {
+                // If already assigned on this date, skip to prevent double-booking
+                if (existingAssignments.containsKey(empId)) {
                     skippedEmployees.add(Map.of(
                         "employee_id", empId,
                         "name", name,

@@ -1,8 +1,10 @@
 package com.scheduler;
 
 import com.scheduler.service.SolverService;
+import com.scheduler.service.DatabaseService;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -22,6 +24,14 @@ public class EdgeCaseAndFuzzTest {
     @Inject
     SolverService solverService;
 
+    @Inject
+    DatabaseService databaseService;
+
+    @BeforeEach
+    public void cleanDatabase() {
+        databaseService.clearAllAssignments();
+    }
+
     @Test
     public void testInsufficientEmployees() {
         Map<String, Object> req = new HashMap<>();
@@ -31,7 +41,6 @@ public class EdgeCaseAndFuzzTest {
         req.put("start_time", "09:00");
         req.put("end_time", "17:00");
         req.put("optimization", "both");
-        req.put("overrideExisting", true);
         
         req.put("roles", List.of(
             Map.of("role_name", "Developer", "max_workers", 5, "rating", 3) // Need 5
@@ -61,7 +70,6 @@ public class EdgeCaseAndFuzzTest {
             req.put("start_time", "09:00");
             req.put("end_time", "17:00");
             req.put("optimization", rand.nextBoolean() ? "cost" : "quality");
-            req.put("overrideExisting", true);
             
             int maxWorkers = rand.nextInt(10) + 1;
             req.put("roles", List.of(

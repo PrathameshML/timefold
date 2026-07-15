@@ -1,7 +1,5 @@
 package com.scheduler.service;
 
-import ai.timefold.solver.core.api.solver.SolverManager;
-import ai.timefold.solver.core.api.solver.SolverJob;
 import com.scheduler.model.*;
 import com.scheduler.solver.ShiftConstraintProvider;
 import jakarta.annotation.PostConstruct;
@@ -10,16 +8,11 @@ import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
 
 import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
-import java.util.stream.Collectors;
 
 @ApplicationScoped
 public class SolverService {
     private static final Logger LOG = Logger.getLogger(SolverService.class);
-    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm");
 
     @Inject
     DatabaseService databaseService;
@@ -75,9 +68,7 @@ public class SolverService {
         String startTimeStr = (String) input.get("start_time");
         String endTimeStr = (String) input.get("end_time");
 
-        // Parse shifts & times
-        LocalTime startLocalTime = LocalTime.parse(startTimeStr, TIME_FORMATTER);
-        LocalTime endLocalTime = LocalTime.parse(endTimeStr, TIME_FORMATTER);
+        // Parse shifts
         List<String> shiftTypes = List.of(targetShift);
 
         // Parse roles & requirements
@@ -185,11 +176,15 @@ public class SolverService {
         }
         WageContext wageContext = new WageContext(averageWagePerRole);
 
-        // Time Limit Formula
-        // The solver loops day-by-day, so the problem scale per solver run is just the number of employees.
-        int totalEntities = employeeInfoMap.size(); 
-        long defaultTimeLimit = 2L + (totalEntities / 20L);
-        long defaultUnimprovedLimit = Math.max(1L, defaultTimeLimit / 4L);
+        // Time Limit Formula (tuned for multi-day single-solver architecture)
+        // The old day-by-day loop gave each day: (2 + employees/20) seconds.
+        // We match that total budget so multi-day solves get equivalent thinking time.
+        int employees = employeeInfoMap.size();
+        int days = dateRange.size();
+        long perDayBudget = 2L + ((long) employees / 20L);
+        long defaultTimeLimit = Math.max(5L, perDayBudget * days);
+        defaultTimeLimit = Math.min(defaultTimeLimit, 300L); // cap at 5 minutes
+        long defaultUnimprovedLimit = Math.max(2L, defaultTimeLimit / 3L);
 
         long timeLimit = input.containsKey("time_limit_seconds") ? ((Number) input.get("time_limit_seconds")).longValue() : defaultTimeLimit;
         long unimprovedLimit = input.containsKey("unimproved_time_limit_seconds") ? ((Number) input.get("unimproved_time_limit_seconds")).longValue() : defaultUnimprovedLimit;
@@ -198,21 +193,16 @@ public class SolverService {
         responseData.put("status", "success");
         responseData.put("message", "Assignments generated successfully");
         responseData.put("shift_name", targetShift);
-        
-        List<Map<String, Object>> assignmentsByDate = new ArrayList<>();
 
         // Ensure we actually have employees to schedule
         if (employeeInfoMap.isEmpty()) {
             return Map.of("status", "error", "message", "No valid employees provided in existing_users");
         }
 
-        int skippedCount = 0;
         int totalAssignedCount = 0;
         long totalSolverTimeMs = 0;
 
         try {
-            boolean overrideExisting = Boolean.TRUE.equals(input.get("overrideExisting"));
-            
             ai.timefold.solver.core.config.solver.SolverConfig solverConfig = new ai.timefold.solver.core.config.solver.SolverConfig()
                     .withSolutionClass(ShiftSchedule.class)
                     .withEntityClasses(EmployeeAssignment.class)
@@ -223,22 +213,27 @@ public class SolverService {
 
             ai.timefold.solver.core.api.solver.SolverFactory<ShiftSchedule> solverFactory = ai.timefold.solver.core.api.solver.SolverFactory.create(solverConfig);
 
-            // Solve day by day
+            // 1. Fetch ALL existing assignments for the entire date range in ONE query
+            Map<String, Set<String>> dbAssignmentsByDate = databaseService.loadAssignmentsForDateRange(
+                startDate.toString(), endDate.toString());
+
+            // 2. Convert DB assignments into ProblemFacts for the solver
+            List<ExistingAssignment> existingFacts = new ArrayList<>();
+            for (Map.Entry<String, Set<String>> entry : dbAssignmentsByDate.entrySet()) {
+                for (String empId : entry.getValue()) {
+                    existingFacts.add(new ExistingAssignment(empId, entry.getKey()));
+                }
+            }
+
+            // 3. Build ALL entities across ALL days — NO continue trick
+            //    The noOverlappingShifts constraint handles preventing double-booking
+            List<EmployeeAssignment> allEntities = new ArrayList<>();
+            int assignmentIdSeq = 1;
+
             for (LocalDate currentDate : dateRange) {
                 String dateStr = currentDate.toString();
-                
-                // Fetch historical assignments from DB to avoid overlapping
-                Map<String, String> dbAssignments = databaseService.loadAssignmentsForDate(dateStr);
-                
-                List<EmployeeAssignment> allEntities = new ArrayList<>();
-                int assignmentIdSeq = 1;
 
                 for (EmployeeInfo emp : employeeInfoMap.values()) {
-                    if (dbAssignments.containsKey(emp.getId()) && !overrideExisting) {
-                        skippedCount++;
-                        continue;
-                    }
-
                     EmployeeAssignment entity = new EmployeeAssignment(
                             dateStr + "_" + emp.getId() + "_" + assignmentIdSeq++,
                             emp.getId(), emp.getName(), dateStr,
@@ -255,64 +250,71 @@ public class SolverService {
                     entity.setPinned(false);
                     allEntities.add(entity);
                 }
+            }
 
-                if (!overrideExisting && allEntities.isEmpty()) {
-                    return Map.of(
-                        "status", "error",
-                        "error_code", 409,
-                        "message", "No employees available for assignment. Skipped count: " + skippedCount
+            if (allEntities.isEmpty()) {
+                return Map.of(
+                    "status", "error",
+                    "error_code", 409,
+                    "message", "No employees available for assignment."
+                );
+            }
+
+            // 4. Single solver run for ALL days — pass existingFacts to the problem
+            ShiftSchedule problem = new ShiftSchedule(allEntities, shiftTypes, roleRequirements, ratingRequirements, activeConstraints, wageContext, existingFacts);
+            problem.setRequestedShiftName(targetShift);
+
+            ai.timefold.solver.core.api.solver.Solver<ShiftSchedule> solver = solverFactory.buildSolver();
+
+            long startMs = System.currentTimeMillis();
+            ShiftSchedule solution = solver.solve(problem);
+            totalSolverTimeMs = System.currentTimeMillis() - startMs;
+
+            // 5. Process results — group by date (TreeMap guarantees chronological sorting)
+            Map<String, List<Map<String, Object>>> resultsByDate = new TreeMap<>();
+
+            for (EmployeeAssignment assignment : solution.getAssignments()) {
+                if (targetShift.equals(assignment.getShift())) {
+                    String dateStr = assignment.getDate();
+
+                    // Save to database
+                    databaseService.syncAssignment(
+                        dateStr, targetShift, assignment.getEmployeeId(), assignment.getEmployeeName(),
+                        assignment.getPosition(), assignment.getCategory(), assignment.getGender(),
+                        assignment.getPerformanceRating(), startTimeStr, endTimeStr, assignment.getHourlyWage()
                     );
+
+                    Map<String, Object> empData = new HashMap<>();
+                    empData.put("id", assignment.getEmployeeId());
+                    empData.put("name", assignment.getEmployeeName());
+                    empData.put("assigned_shift", targetShift);
+                    empData.put("role", assignment.getPosition());
+                    empData.put("rating", assignment.getPerformanceRating());
+                    empData.put("hourly_wage", assignment.getHourlyWage());
+                    empData.put("gender", assignment.getGender());
+
+                    resultsByDate.computeIfAbsent(dateStr, k -> new ArrayList<>()).add(empData);
+                    totalAssignedCount++;
                 }
+            }
 
-                ShiftSchedule problem = new ShiftSchedule(allEntities, shiftTypes, roleRequirements, ratingRequirements, activeConstraints, wageContext);
-                problem.setRequestedShiftName(targetShift);
-
-                ai.timefold.solver.core.api.solver.Solver<ShiftSchedule> solver = solverFactory.buildSolver();
-
-                long startMs = System.currentTimeMillis();
-                ShiftSchedule solution = solver.solve(problem);
-                totalSolverTimeMs += (System.currentTimeMillis() - startMs);
-                
-                List<Map<String, Object>> assignedEmployeesForDay = new ArrayList<>();
-                
-                for (EmployeeAssignment assignment : solution.getAssignments()) {
-                    // Only process assignments for the target shift that were just assigned
-                    if (targetShift.equals(assignment.getShift()) && !assignment.isPinned()) {
-                        
-                        // Save to database
-                        databaseService.syncAssignment(
-                            dateStr, targetShift, assignment.getEmployeeId(), assignment.getEmployeeName(),
-                            assignment.getPosition(), assignment.getCategory(), assignment.getGender(),
-                            assignment.getPerformanceRating(), startTimeStr, endTimeStr, assignment.getHourlyWage()
-                        );
-                        
-                        Map<String, Object> empData = new HashMap<>();
-                        empData.put("id", assignment.getEmployeeId());
-                        empData.put("name", assignment.getEmployeeName());
-                        empData.put("assigned_shift", targetShift);
-                        empData.put("role", assignment.getPosition());
-                        empData.put("rating", assignment.getPerformanceRating());
-                        empData.put("hourly_wage", assignment.getHourlyWage());
-                        empData.put("gender", assignment.getGender());
-                        assignedEmployeesForDay.add(empData);
-                        totalAssignedCount++;
-                    }
-                }
-
+            // 6. Build assignments_by_date response (SAME FORMAT as before)
+            List<Map<String, Object>> assignmentsByDate = new ArrayList<>();
+            for (Map.Entry<String, List<Map<String, Object>>> entry : resultsByDate.entrySet()) {
                 Map<String, Object> dayResult = new HashMap<>();
-                dayResult.put("date", dateStr);
-                dayResult.put("total_assigned", assignedEmployeesForDay.size());
-                dayResult.put("assigned_employees", assignedEmployeesForDay);
+                dayResult.put("date", entry.getKey());
+                dayResult.put("total_assigned", entry.getValue().size());
+                dayResult.put("assigned_employees", entry.getValue());
                 dayResult.put("score", solution.getScore() != null ? solution.getScore().toString() : "Unknown");
                 assignmentsByDate.add(dayResult);
             }
+
+            responseData.put("assignments_by_date", assignmentsByDate);
         } catch (Exception e) {
             LOG.error("Solving failed", e);
             return Map.of("status", "error", "message", "Solving failed: " + e.getMessage());
         }
 
-        responseData.put("assignments_by_date", assignmentsByDate);
-        responseData.put("skipped_count", skippedCount);
         responseData.put("new_assignments_made", totalAssignedCount);
         responseData.put("solver_time_seconds", totalSolverTimeMs / 1000.0);
         return responseData;

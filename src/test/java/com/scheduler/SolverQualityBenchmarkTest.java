@@ -1,8 +1,10 @@
 package com.scheduler;
 
 import com.scheduler.service.SolverService;
+import com.scheduler.service.DatabaseService;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jboss.logging.Logger;
 
@@ -27,6 +29,14 @@ public class SolverQualityBenchmarkTest {
 
     @Inject
     SolverService solverService;
+
+    @Inject
+    DatabaseService databaseService;
+
+    @BeforeEach
+    public void cleanDatabase() {
+        databaseService.clearAllAssignments();
+    }
 
     @Test
     public void runQualityBenchmark() {
@@ -77,7 +87,6 @@ public class SolverQualityBenchmarkTest {
         req.put("start_time", "09:00");
         req.put("end_time", "17:00");
         req.put("optimization", "both");
-        req.put("overrideExisting", true);
         req.put("time_limit_seconds", timeLimit);
 
         List<Map<String, Object>> rolesList = new ArrayList<>();

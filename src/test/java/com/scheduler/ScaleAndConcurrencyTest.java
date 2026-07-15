@@ -1,8 +1,10 @@
 package com.scheduler;
 
 import com.scheduler.service.SolverService;
+import com.scheduler.service.DatabaseService;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -25,6 +27,14 @@ public class ScaleAndConcurrencyTest {
     @Inject
     SolverService solverService;
 
+    @Inject
+    DatabaseService databaseService;
+
+    @BeforeEach
+    public void cleanDatabase() {
+        databaseService.clearAllAssignments();
+    }
+
     @Test
     public void testConcurrency10Requests() throws InterruptedException {
         int threads = 10;
@@ -44,7 +54,6 @@ public class ScaleAndConcurrencyTest {
                     req.put("start_time", "09:00");
                     req.put("end_time", "17:00");
                     req.put("optimization", "both");
-                    req.put("overrideExisting", true);
                     
                     req.put("roles", List.of(
                         Map.of("role_name", "Developer", "max_workers", 1, "rating", 3)
@@ -111,7 +120,6 @@ public class ScaleAndConcurrencyTest {
                     req.put("start_time", "09:00");
                     req.put("end_time", "17:00");
                     req.put("optimization", "both");
-                    req.put("overrideExisting", true);
                     
                     req.put("roles", List.of(
                         Map.of("role_name", "Developer", "max_workers", 1, "rating", 3)

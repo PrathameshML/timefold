@@ -10,8 +10,10 @@ import javax.sql.DataSource;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @ApplicationScoped
 public class DatabaseService {
@@ -234,6 +236,34 @@ public class DatabaseService {
             }
         } catch (SQLException e) {
             LOG.error("Failed to load assignments for date: " + date, e);
+        }
+        return assignments;
+    }
+    // --- ASSIGNMENTS RANGE QUERY ---
+
+    /**
+     * Fetches all assignments for a date range in a single query.
+     * Returns: Map&lt;dateString, Set&lt;employeeId&gt;&gt;
+     * Throws RuntimeException on DB failure to prevent silent double-booking.
+     */
+    public Map<String, Set<String>> loadAssignmentsForDateRange(String startDate, String endDate) {
+        Map<String, Set<String>> assignments = new HashMap<>();
+        String sql = "SELECT assignment_date, employee_id FROM shift_assignments " +
+                     "WHERE assignment_date BETWEEN ? AND ?";
+        try (Connection conn = getConnection();
+             PreparedStatement pstmt = conn.prepareStatement(sql)) {
+            pstmt.setDate(1, Date.valueOf(startDate));
+            pstmt.setDate(2, Date.valueOf(endDate));
+            try (ResultSet rs = pstmt.executeQuery()) {
+                while (rs.next()) {
+                    String date = rs.getDate("assignment_date").toString();
+                    String empId = rs.getString("employee_id");
+                    assignments.computeIfAbsent(date, k -> new HashSet<>()).add(empId);
+                }
+            }
+        } catch (SQLException e) {
+            LOG.error("Failed to load assignments for date range: " + startDate + " to " + endDate, e);
+            throw new RuntimeException("Database query failed: Unable to load assignments for date range", e);
         }
         return assignments;
     }

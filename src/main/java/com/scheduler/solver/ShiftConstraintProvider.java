@@ -7,11 +7,11 @@ import ai.timefold.solver.core.api.score.stream.ConstraintProvider;
 import ai.timefold.solver.core.api.score.stream.Joiners;
 import com.scheduler.model.ConstraintConfig;
 import com.scheduler.model.EmployeeAssignment;
+import com.scheduler.model.ExistingAssignment;
 import com.scheduler.model.RatingRequirement;
 import com.scheduler.model.RoleRequirement;
 
 import java.util.List;
-import java.util.Map;
 
 public class ShiftConstraintProvider implements ConstraintProvider {
 
@@ -53,15 +53,18 @@ public class ShiftConstraintProvider implements ConstraintProvider {
         return defaultVal;
     }
 
+    // Record used to wrap 3 keys into 1, avoiding Timefold's 4-variable stream limit (PentaConstraintStream error)
+    record ShiftRoleKey(String date, String shift, String position) {}
+
     private Constraint maxWorkersPerRole(ConstraintFactory constraintFactory) {
         return constraintFactory.forEach(EmployeeAssignment.class)
                 .filter(assignment -> isConstraintActive(assignment, "maxWorkersPerRole") && assignment.getShift() != null)
-                .groupBy(EmployeeAssignment::getShift, EmployeeAssignment::getPosition, ai.timefold.solver.core.api.score.stream.ConstraintCollectors.count())
+                .groupBy(a -> new ShiftRoleKey(a.getDate(), a.getShift(), a.getPosition()), ai.timefold.solver.core.api.score.stream.ConstraintCollectors.count())
                 .join(RoleRequirement.class,
-                        Joiners.equal((shift, role, count) -> role, RoleRequirement::getRoleName))
-                .filter((shift, role, count, roleLimit) -> count > roleLimit.getMaxWorkers())
+                        Joiners.equal((key, count) -> key.position(), RoleRequirement::getRoleName))
+                .filter((key, count, roleLimit) -> count > roleLimit.getMaxWorkers())
                 .penalizeLong(HardMediumSoftLongScore.ONE_HARD,
-                        (shift, role, count, roleLimit) -> (long) (count - roleLimit.getMaxWorkers()))
+                        (key, count, roleLimit) -> (long) (count - roleLimit.getMaxWorkers()))
                 .asConstraint("maxWorkersPerRole");
     }
 
@@ -76,6 +79,7 @@ public class ShiftConstraintProvider implements ConstraintProvider {
                 .asConstraint("minimumRatingRequirement");
     }
 
+    @SuppressWarnings("deprecation")
     private Constraint everyShiftPlanned(ConstraintFactory constraintFactory) {
         return constraintFactory.forEachIncludingNullVars(EmployeeAssignment.class)
                 .groupBy(EmployeeAssignment::getDate, EmployeeAssignment::getPosition, ai.timefold.solver.core.api.score.stream.ConstraintCollectors.sumLong(a -> a.getShift() != null ? 1L : 0L))
@@ -87,12 +91,12 @@ public class ShiftConstraintProvider implements ConstraintProvider {
     }
 
     private Constraint noOverlappingShifts(ConstraintFactory constraintFactory) {
-        return constraintFactory.forEachUniquePair(EmployeeAssignment.class,
-                        Joiners.equal(EmployeeAssignment::getEmployeeId),
-                        Joiners.equal(EmployeeAssignment::getDate))
-                .filter((a1, a2) -> isConstraintActive(a1, "noOverlappingShifts") && a1.getShift() != null && a2.getShift() != null &&
-                        !a1.getShift().equals(a2.getShift()))
-                .penalizeLong(HardMediumSoftLongScore.ONE_HARD, (a1, a2) -> 1L)
+        return constraintFactory.forEach(EmployeeAssignment.class)
+                .filter(a -> isConstraintActive(a, "noOverlappingShifts") && a.getShift() != null)
+                .join(ExistingAssignment.class,
+                        Joiners.equal(EmployeeAssignment::getEmployeeId, ExistingAssignment::getEmployeeId),
+                        Joiners.equal(EmployeeAssignment::getDate, ExistingAssignment::getDate))
+                .penalizeLong(HardMediumSoftLongScore.ONE_HARD, (a, existing) -> 1L)
                 .asConstraint("noOverlappingShifts");
     }
 

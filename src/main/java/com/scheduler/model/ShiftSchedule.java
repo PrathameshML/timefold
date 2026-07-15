@@ -27,6 +27,9 @@ public class ShiftSchedule {
     @ProblemFactCollectionProperty
     private List<ConstraintConfig> constraintConfigs;
 
+    @ProblemFactCollectionProperty
+    private List<ExistingAssignment> existingAssignments;
+
     @ProblemFactProperty
     private WageContext wageContext;
 
@@ -41,13 +44,15 @@ public class ShiftSchedule {
                          List<RoleRequirement> roleRequirements,
                          List<RatingRequirement> ratingRequirements,
                          List<ConstraintConfig> constraintConfigs,
-                         WageContext wageContext) {
+                         WageContext wageContext,
+                         List<ExistingAssignment> existingAssignments) {
         this.assignments = assignments;
         this.shiftTypes = shiftTypes;
         this.roleRequirements = roleRequirements;
         this.ratingRequirements = ratingRequirements;
         this.constraintConfigs = constraintConfigs;
         this.wageContext = wageContext;
+        this.existingAssignments = existingAssignments;
     }
 
     public List<EmployeeAssignment> getAssignments() { return assignments; }
@@ -62,6 +67,8 @@ public class ShiftSchedule {
     public void setWageContext(WageContext wageContext) { this.wageContext = wageContext; }
     public List<ConstraintConfig> getConstraintConfigs() { return constraintConfigs; }
     public void setConstraintConfigs(List<ConstraintConfig> constraintConfigs) { this.constraintConfigs = constraintConfigs; }
+    public List<ExistingAssignment> getExistingAssignments() { return existingAssignments; }
+    public void setExistingAssignments(List<ExistingAssignment> existingAssignments) { this.existingAssignments = existingAssignments; }
     public HardMediumSoftLongScore getScore() { return score; }
     public void setScore(HardMediumSoftLongScore score) { this.score = score; }
     public String getRequestedShiftName() { return requestedShiftName; }

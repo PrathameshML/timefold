@@ -1,8 +1,10 @@
 package com.scheduler;
 
 import com.scheduler.service.SolverService;
+import com.scheduler.service.DatabaseService;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jboss.logging.Logger;
 
@@ -27,6 +29,14 @@ public class ExtremeScaleAndPerformanceTest {
 
     @Inject
     SolverService solverService;
+
+    @Inject
+    DatabaseService databaseService;
+
+    @BeforeEach
+    public void cleanDatabase() {
+        databaseService.clearAllAssignments();
+    }
 
     @Test
     public void testScale500Employees1Day() {
@@ -73,7 +83,6 @@ public class ExtremeScaleAndPerformanceTest {
         req.put("start_time", "09:00");
         req.put("end_time", "17:00");
         req.put("optimization", "both");
-        req.put("overrideExisting", !addHistorical);
 
         List<Map<String, Object>> rolesList = new ArrayList<>();
         int workersPerRole = numRequired / numRoles;
