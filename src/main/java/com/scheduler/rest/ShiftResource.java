@@ -81,9 +81,11 @@ public class ShiftResource {
         int failedShifts = 0;
         java.util.Set<String> uniqueDates = new java.util.HashSet<>();
 
-        for (Map<String, Object> request : batchRequests) {
+        for (int i = 0; i < batchRequests.size(); i++) {
+            Map<String, Object> request = batchRequests.get(i);
             try {
                 Map<String, Object> result = solverService.solveShift(request);
+                result.put("shift_index", i);
                 results.add(result);
                 
                 if ("error".equals(result.get("status"))) {
@@ -107,11 +109,12 @@ public class ShiftResource {
             } catch (Exception e) {
                 LOG.error("Failed to solve shift in batch", e);
                 failedShifts++;
-                results.add(Map.of(
-                        "status", "error",
-                        "message", e.getMessage(),
-                        "shift_name", request.getOrDefault("shift_name", "unknown")
-                ));
+                Map<String, Object> errorResult = new HashMap<>();
+                errorResult.put("status", "error");
+                errorResult.put("message", e.getMessage());
+                errorResult.put("shift_name", request.getOrDefault("shift_name", "unknown"));
+                errorResult.put("shift_index", i);
+                results.add(errorResult);
             }
         }
 
@@ -128,6 +131,12 @@ public class ShiftResource {
         response.put("status", "completed");
         response.put("version", "v3");
         response.put("overall_statistics", overallStats);
+        
+        StringBuilder summaryBuilder = new StringBuilder();
+        summaryBuilder.append("Successfully processed ").append(batchRequests.size()).append(" shifts. ");
+        summaryBuilder.append("Total assignments: ").append(totalAssignments).append(" across ").append(uniqueDates.size()).append(" days.");
+        response.put("summary", summaryBuilder.toString());
+        
         response.put("shift_results", results);
 
         return Response.ok(response).build();

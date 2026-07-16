@@ -116,7 +116,7 @@ public class ExtremeScaleAndPerformanceTest {
         LOG.info("Total CPU Wall Time: " + (endMs - startMs) + "ms");
         
         assertEquals("success", result.get("status"), "Scale test failed execution");
-        assertNotNull(result.get("assignments_by_date"));
+        assertNotNull(result.get("daily_summary"));
         LOG.info("=== Finished Scale Test: " + shiftName + " ===");
     }
 }

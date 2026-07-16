@@ -67,14 +67,14 @@ public class ConstraintAndOptimizationTest {
         Map<String, Object> result = solverService.solveShift(req);
         assertEquals("success", result.get("status"));
         
-        List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("assignments_by_date");
+        List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("daily_summary");
         assertFalse(assignments.isEmpty());
         
-        List<Map<String, Object>> assignedEmployees = (List<Map<String, Object>>) assignments.get(0).get("assigned_employees");
+        List<Map<String, Object>> assignedEmployees = (List<Map<String, Object>>) assignments.get(0).get("assignments");
         assertEquals(1, assignedEmployees.size());
         
         // Cost mode should pick the cheaper one (Bob) even though Alice has a higher rating
-        assertEquals("EMP_CHEAP", assignedEmployees.get(0).get("id"));
+        assertEquals("EMP_CHEAP", assignedEmployees.get(0).get("employeeId"));
     }
     
     @Test
@@ -117,11 +117,11 @@ public class ConstraintAndOptimizationTest {
         Map<String, Object> result = solverService.solveShift(req);
         assertEquals("success", result.get("status"));
         
-        List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("assignments_by_date");
-        List<Map<String, Object>> assignedEmployees = (List<Map<String, Object>>) assignments.get(0).get("assigned_employees");
+        List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("daily_summary");
+        List<Map<String, Object>> assignedEmployees = (List<Map<String, Object>>) assignments.get(0).get("assignments");
         assertEquals(1, assignedEmployees.size());
         
         // Quality mode should pick the higher rated one (Alice) regardless of cost
-        assertEquals("EMP_EXPENSIVE", assignedEmployees.get(0).get("id"));
+        assertEquals("EMP_EXPENSIVE", assignedEmployees.get(0).get("employeeId"));
     }
 }

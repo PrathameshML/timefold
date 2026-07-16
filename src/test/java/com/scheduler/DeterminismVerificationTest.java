@@ -49,8 +49,8 @@ public class DeterminismVerificationTest {
             Map<String, Object> result = solverService.solveShift(req);
             assertEquals("success", result.get("status"));
             
-            List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("assignments_by_date");
-            String currentScore = (String) assignments.get(0).get("score");
+            List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("daily_summary");
+            String currentScore = (String) result.get("solver_score");
             
             // Score must have zero hard violations
             assertTrue(currentScore.startsWith("0hard"), "Run " + run + " had hard constraints: " + currentScore);

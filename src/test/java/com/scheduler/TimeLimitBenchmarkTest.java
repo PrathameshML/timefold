@@ -167,17 +167,17 @@ public class TimeLimitBenchmarkTest {
                 double avgRating = 0.0;
 
                 if ("success".equals(status)) {
-                    List<Map<String, Object>> byDate = (List<Map<String, Object>>) result.get("assignments_by_date");
+                    List<Map<String, Object>> byDate = (List<Map<String, Object>>) result.get("daily_summary");
                     if (byDate != null) {
                         double totalWage = 0;
                         double totalRating = 0;
                         
                         for (Map<String, Object> dateEntry : byDate) {
-                            List<Map<String, Object>> assignedEmployees = (List<Map<String, Object>>) dateEntry.get("assigned_employees");
+                            List<Map<String, Object>> assignedEmployees = (List<Map<String, Object>>) dateEntry.get("assignments");
                             if (assignedEmployees != null) {
                                 for (Map<String, Object> empData : assignedEmployees) {
                                     assignedCount++;
-                                    Number hw = (Number) empData.getOrDefault("hourly_wage", 0.0);
+                                    Number hw = (Number) empData.getOrDefault("wage", 0.0);
                                     Number rt = (Number) empData.getOrDefault("rating", 0.0);
                                     totalWage += hw.doubleValue();
                                     totalRating += rt.doubleValue();

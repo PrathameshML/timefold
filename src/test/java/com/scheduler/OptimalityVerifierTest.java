@@ -65,12 +65,12 @@ public class OptimalityVerifierTest {
         Map<String, Object> result = solverService.solveShift(req);
         assertEquals("success", result.get("status"));
         
-        List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("assignments_by_date");
-        List<Map<String, Object>> assignedEmployees = (List<Map<String, Object>>) assignments.get(0).get("assigned_employees");
+        List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("daily_summary");
+        List<Map<String, Object>> assignedEmployees = (List<Map<String, Object>>) assignments.get(0).get("assignments");
         assertEquals(2, assignedEmployees.size());
         
-        boolean hasE1 = assignedEmployees.stream().anyMatch(e -> "E1".equals(e.get("id")));
-        boolean hasE4 = assignedEmployees.stream().anyMatch(e -> "E4".equals(e.get("id")));
+        boolean hasE1 = assignedEmployees.stream().anyMatch(e -> "E1".equals(e.get("employeeId")));
+        boolean hasE4 = assignedEmployees.stream().anyMatch(e -> "E4".equals(e.get("employeeId")));
         
         assertTrue(hasE1, "Solver MUST select the absolute mathematically best entity (E1)");
         assertTrue(hasE4, "Solver MUST select the second mathematically best entity (E4)");

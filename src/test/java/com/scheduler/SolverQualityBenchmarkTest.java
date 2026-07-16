@@ -60,11 +60,11 @@ public class SolverQualityBenchmarkTest {
             
             assertEquals("success", result.get("status"));
             
-            List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("assignments_by_date");
+            List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("daily_summary");
             Map<String, Object> dayResult = assignments.get(0);
             
-            String score = (String) dayResult.get("score");
-            int assigned = (Integer) dayResult.get("total_assigned");
+            String score = (String) result.get("solver_score");
+            int assigned = (Integer) dayResult.get("count");
             int unassigned = 300 - assigned;
             long solveTime = (endMs - startMs);
             long memUsed = (heapEnd.getUsed() - heapStart.getUsed()) / 1024 / 1024;

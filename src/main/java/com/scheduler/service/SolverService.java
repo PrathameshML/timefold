@@ -191,8 +191,10 @@ public class SolverService {
 
         Map<String, Object> responseData = new HashMap<>();
         responseData.put("status", "success");
-        responseData.put("message", "Assignments generated successfully");
         responseData.put("shift_name", targetShift);
+        responseData.put("period", startDateStr + " to " + endDateStr);
+        responseData.put("shift_time", startTimeStr + " - " + endTimeStr);
+        responseData.put("total_working_days", dateRange.size());
 
         // Ensure we actually have employees to schedule
         if (employeeInfoMap.isEmpty()) {
@@ -285,31 +287,103 @@ public class SolverService {
                     );
 
                     Map<String, Object> empData = new HashMap<>();
-                    empData.put("id", assignment.getEmployeeId());
-                    empData.put("name", assignment.getEmployeeName());
-                    empData.put("assigned_shift", targetShift);
+                    empData.put("employeeId", assignment.getEmployeeId());
+                    empData.put("employeeName", assignment.getEmployeeName());
                     empData.put("role", assignment.getPosition());
                     empData.put("rating", assignment.getPerformanceRating());
-                    empData.put("hourly_wage", assignment.getHourlyWage());
+                    empData.put("wage", assignment.getHourlyWage());
                     empData.put("gender", assignment.getGender());
+                    empData.put("employeeType", assignment.getCategory());
 
                     resultsByDate.computeIfAbsent(dateStr, k -> new ArrayList<>()).add(empData);
                     totalAssignedCount++;
                 }
             }
 
-            // 6. Build assignments_by_date response (SAME FORMAT as before)
+            responseData.put("entities_planned", allEntities.size());
+            responseData.put("total_possible_assignments", allEntities.size());
+            int skippedCount = allEntities.size() - totalAssignedCount;
+            responseData.put("skipped_count", skippedCount);
+            responseData.put("solver_score", solution.getScore() != null ? solution.getScore().toString() : "Unknown");
+
+            // Role Statistics & Assignments by Employee Type
+            Map<String, Map<String, Object>> roleStatistics = new HashMap<>();
+            Map<String, Long> assignmentsByEmployeeType = new HashMap<>();
+
+            // 6. Build daily_summary response
             List<Map<String, Object>> assignmentsByDate = new ArrayList<>();
             for (Map.Entry<String, List<Map<String, Object>>> entry : resultsByDate.entrySet()) {
                 Map<String, Object> dayResult = new HashMap<>();
                 dayResult.put("date", entry.getKey());
-                dayResult.put("total_assigned", entry.getValue().size());
-                dayResult.put("assigned_employees", entry.getValue());
-                dayResult.put("score", solution.getScore() != null ? solution.getScore().toString() : "Unknown");
+                dayResult.put("count", entry.getValue().size());
+                dayResult.put("assignments", entry.getValue());
+                
+                Map<String, Integer> roleCounts = new HashMap<>();
+                for (Map<String, Object> empData : entry.getValue()) {
+                    String role = (String) empData.get("role");
+                    roleCounts.put(role, roleCounts.getOrDefault(role, 0) + 1);
+
+                    String empType = (String) empData.get("employeeType");
+                    assignmentsByEmployeeType.put(empType, assignmentsByEmployeeType.getOrDefault(empType, 0L) + 1L);
+                }
+                dayResult.put("role_counts", roleCounts);
+                
                 assignmentsByDate.add(dayResult);
             }
 
-            responseData.put("assignments_by_date", assignmentsByDate);
+            // Compute role statistics
+            for (RoleRequirement req : roleRequirements) {
+                String role = req.getRoleName();
+                int count = 0;
+                double totalWage = 0.0;
+                for (List<Map<String, Object>> dayAssignments : resultsByDate.values()) {
+                    for (Map<String, Object> empData : dayAssignments) {
+                        if (role.equals(empData.get("role"))) {
+                            count++;
+                            Number wageNum = (Number) empData.get("wage");
+                            if (wageNum != null) {
+                                totalWage += wageNum.doubleValue();
+                            }
+                        }
+                    }
+                }
+                Map<String, Object> stats = new HashMap<>();
+                stats.put("assignments", count);
+                stats.put("average_wage", count > 0 ? String.format(java.util.Locale.US, "%.2f", totalWage / count) : "0.00");
+                stats.put("max_per_day", req.getMaxWorkers());
+                roleStatistics.put(role, stats);
+            }
+
+            responseData.put("role_statistics", roleStatistics);
+            responseData.put("assignments_by_employee_type", assignmentsByEmployeeType);
+            responseData.put("daily_summary", assignmentsByDate);
+
+            // 7. Constraint Violations
+            List<String> constraintViolations = new ArrayList<>();
+            if (solution.getScore() != null && !solution.getScore().isFeasible()) {
+                ai.timefold.solver.core.api.solver.SolutionManager<ShiftSchedule, ai.timefold.solver.core.api.score.buildin.hardmediumsoftlong.HardMediumSoftLongScore> solutionManager = ai.timefold.solver.core.api.solver.SolutionManager.create(solverFactory);
+                ai.timefold.solver.core.api.score.analysis.ScoreAnalysis<ai.timefold.solver.core.api.score.buildin.hardmediumsoftlong.HardMediumSoftLongScore> scoreAnalysis = solutionManager.analyze(solution);
+                
+                for (ai.timefold.solver.core.api.score.analysis.ConstraintAnalysis<ai.timefold.solver.core.api.score.buildin.hardmediumsoftlong.HardMediumSoftLongScore> ca : scoreAnalysis.constraintMap().values()) {
+                    if (ca.score().hardScore() < 0) {
+                        constraintViolations.add("Violated Constraint: " + ca.constraintRef().constraintName() +
+                                " (Score impact: " + ca.score().hardScore() + ")");
+                    }
+                }
+            }
+            responseData.put("constraint_violations", constraintViolations);
+
+            if (!constraintViolations.isEmpty()) {
+                responseData.put("message", "Schedule solved but with HARD constraint violations!");
+            } else {
+                StringBuilder message = new StringBuilder();
+                message.append("Successfully assigned shifts for ").append(dateRange.size()).append(" days. ");
+                message.append("Total assignments: ").append(totalAssignedCount).append(". ");
+                if (skippedCount > 0) {
+                    message.append("Skipped ").append(skippedCount).append(" assignments.");
+                }
+                responseData.put("message", message.toString());
+            }
         } catch (Exception e) {
             LOG.error("Solving failed", e);
             return Map.of("status", "error", "message", "Solving failed: " + e.getMessage());
