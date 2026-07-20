@@ -129,7 +129,6 @@ public class ShiftResource {
 
         Map<String, Object> response = new HashMap<>();
         response.put("status", "completed");
-        response.put("version", "v3");
         response.put("overall_statistics", overallStats);
         
         StringBuilder summaryBuilder = new StringBuilder();

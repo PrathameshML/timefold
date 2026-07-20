@@ -42,16 +42,18 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            echo "Stopping old application..."
-            fuser -k 8083/tcp || true
-            sleep 3
-            
-            echo "Setting environment variables and starting new application..."
-            cd ~/shift-app/quarkus-app
-            export DB_URL="${{ secrets.DB_URL }}"
-            export DB_USER="${{ secrets.DB_USER }}"
-            export DB_PASSWORD="${{ secrets.DB_PASSWORD }}"
-            
-            nohup java -jar quarkus-run.jar > ~/timefold.log 2>&1 &
-            
-            echo "Application restarted successfully!"
+            echo "Writing environment secrets..."
+            sudo mkdir -p /etc/systemd/system/quarkus-app.service.d
+            sudo tee /etc/systemd/system/quarkus-app.service.d/override.conf > /dev/null <<EOF
+            [Service]
+            Environment=DB_URL=${{ secrets.DB_URL }}
+            Environment=DB_USER=${{ secrets.DB_USER }}
+            Environment=DB_PASSWORD=${{ secrets.DB_PASSWORD }}
+            EOF
+
+            echo "Reloading and restarting service..."
+            sudo systemctl daemon-reload
+            sudo systemctl restart quarkus-app
+
+            echo "Checking status..."
+            sudo systemctl status quarkus-app --no-pager
