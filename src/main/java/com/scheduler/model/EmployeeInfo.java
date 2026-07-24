@@ -2,7 +2,11 @@ package com.scheduler.model;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -19,6 +23,9 @@ public class EmployeeInfo {
     private String department;
     private String position;
     private int performanceRating;
+
+    // V2: Per-date availability overrides (empty map = available all days)
+    private Map<LocalDate, AvailabilityEntry> availabilityMap = new HashMap<>();
     
     public EmployeeInfo() {}
 
@@ -62,4 +69,25 @@ public class EmployeeInfo {
     public void setPerformanceRating(int rating) { this.performanceRating = Math.max(1, Math.min(5, rating)); }
 
     public void addSkill(String skill) { skills.add(skill); }
+
+    // V2: Availability methods
+    public Map<LocalDate, AvailabilityEntry> getAvailabilityMap() { return availabilityMap; }
+    public void setAvailabilityMap(Map<LocalDate, AvailabilityEntry> availabilityMap) { this.availabilityMap = availabilityMap; }
+
+    /**
+     * Checks if this employee is available for a shift on the given date.
+     * If no availability entry exists for the date, the employee is assumed available.
+     * For "unavailable" entries, returns false.
+     * For "partial" entries, checks if the available window fully covers the shift.
+     */
+    public boolean isAvailableForShift(LocalDate date, LocalTime shiftStart, LocalTime shiftEnd) {
+        if (availabilityMap == null || availabilityMap.isEmpty()) {
+            return true; // No overrides = available all days
+        }
+        AvailabilityEntry entry = availabilityMap.get(date);
+        if (entry == null) {
+            return true; // Date not listed = available
+        }
+        return entry.coversShift(shiftStart, shiftEnd);
+    }
 }

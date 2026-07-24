@@ -141,7 +141,120 @@ public class ShiftResource {
         return Response.ok(response).build();
     }
 
+    // ========================================================================================
+    // V2 API — Availability-aware shift assignment
+    // These endpoints are separate from the V1 endpoints to avoid touching stable APIs.
+    // They support an optional "availability" field per employee for per-day availability.
+    // ========================================================================================
 
+    @POST
+    @Path("/shifts/v2/assign")
+    public Response assignShiftV2(Map<String, Object> input) {
+        LOG.info("Received V2 shift assignment request (with availability support)");
+        try {
+            Map<String, Object> result = solverService.solveShiftV2(input);
+            if ("error".equals(result.get("status"))) {
+                int errorCode = result.containsKey("error_code") ? ((Number) result.get("error_code")).intValue() : Response.Status.BAD_REQUEST.getStatusCode();
+                return Response.status(errorCode).entity(result).build();
+            }
+            return Response.ok(result).build();
+        } catch (Exception e) {
+            LOG.error("Failed to solve shift (V2)", e);
+            return Response.serverError()
+                    .entity(Map.of("status", "error", "message", e.getMessage()))
+                    .build();
+        }
+    }
+
+    @POST
+    @Path("/shifts/v2/batch-assign")
+    public Response batchAssignShiftsV2(Map<String, Object> input) {
+        Object shiftsObj = input.get("shifts");
+        if (!(shiftsObj instanceof List)) {
+            return Response.status(400).entity(Map.of(
+                    "error", "Invalid format",
+                    "required", "shifts must be a list of objects"
+            )).build();
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> batchRequests = (List<Map<String, Object>>) shiftsObj;
+
+        if (batchRequests.isEmpty()) {
+            return Response.status(400).entity(Map.of(
+                    "error", "Missing required field",
+                    "required", "shifts array cannot be empty"
+            )).build();
+        }
+
+        LOG.info("Received V2 batch assignment request with " + batchRequests.size() + " shifts (with availability support)");
+        List<Map<String, Object>> results = new ArrayList<>();
+        int totalAssignments = 0;
+        int totalSkipped = 0;
+        double totalSolverTime = 0.0;
+        int successfulShifts = 0;
+        int failedShifts = 0;
+        java.util.Set<String> uniqueDates = new java.util.HashSet<>();
+
+        for (int i = 0; i < batchRequests.size(); i++) {
+            Map<String, Object> request = batchRequests.get(i);
+            try {
+                Map<String, Object> result = solverService.solveShiftV2(request);
+                result.put("shift_index", i);
+                results.add(result);
+                
+                if ("error".equals(result.get("status"))) {
+                    failedShifts++;
+                } else {
+                    successfulShifts++;
+                    totalAssignments += (int) result.getOrDefault("new_assignments_made", 0);
+                    totalSkipped += (int) result.getOrDefault("skipped_count", 0);
+                    totalSolverTime += ((Number) result.getOrDefault("solver_time_seconds", 0.0)).doubleValue();
+                }
+                
+                String startDate = (String) request.get("start_date");
+                String endDate = (String) request.get("end_date");
+                if (startDate != null) {
+                    java.time.LocalDate start = java.time.LocalDate.parse(startDate);
+                    java.time.LocalDate end = (endDate != null && !endDate.trim().isEmpty()) ? java.time.LocalDate.parse(endDate) : start;
+                    for (java.time.LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
+                        uniqueDates.add(d.toString());
+                    }
+                }
+            } catch (Exception e) {
+                LOG.error("Failed to solve shift in V2 batch", e);
+                failedShifts++;
+                Map<String, Object> errorResult = new HashMap<>();
+                errorResult.put("status", "error");
+                errorResult.put("message", e.getMessage());
+                errorResult.put("shift_name", request.getOrDefault("shift_name", "unknown"));
+                errorResult.put("shift_index", i);
+                results.add(errorResult);
+            }
+        }
+
+        Map<String, Object> overallStats = new HashMap<>();
+        overallStats.put("total_shifts_processed", batchRequests.size());
+        overallStats.put("successful_shifts", successfulShifts);
+        overallStats.put("failed_shifts", failedShifts);
+        overallStats.put("total_assignments_made", totalAssignments);
+        overallStats.put("total_working_days", uniqueDates.size());
+        overallStats.put("total_skipped_assignments", totalSkipped);
+        overallStats.put("total_solver_time_seconds", totalSolverTime);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "completed");
+        response.put("overall_statistics", overallStats);
+        
+        StringBuilder summaryBuilder = new StringBuilder();
+        summaryBuilder.append("Successfully processed ").append(batchRequests.size()).append(" shifts. ");
+        summaryBuilder.append("Total assignments: ").append(totalAssignments).append(" across ").append(uniqueDates.size()).append(" days.");
+        response.put("summary", summaryBuilder.toString());
+        
+        response.put("shift_results", results);
+
+        return Response.ok(response).build();
+    }
 
     @GET
     @Path("/constraints")
