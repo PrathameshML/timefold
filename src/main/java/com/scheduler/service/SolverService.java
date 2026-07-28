@@ -56,6 +56,339 @@ public class SolverService {
         loadConstraintConfigs(); // Reload cache
     }
 
+    public Map<String, Object> solveGlobal(Map<String, Object> input) {
+        LOG.debug("Starting solveGlobal (Multi-Shift Optimization)");
+        long startTime = System.currentTimeMillis();
+
+        if (input == null || !input.containsKey("shifts")) {
+            return Map.of("status", "error", "message", "Missing 'shifts' array in request");
+        }
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> shiftsInput = (List<Map<String, Object>>) input.get("shifts");
+        if (shiftsInput.isEmpty()) {
+            return Map.of("status", "error", "message", "The 'shifts' array cannot be empty");
+        }
+
+        String optimization = (String) input.getOrDefault("optimization", "both");
+
+        Set<java.time.LocalDate> allDates = new HashSet<>();
+        List<String> allShiftTypes = new ArrayList<>();
+        List<ShiftDefinition> shiftDefinitions = new ArrayList<>();
+        List<ShiftRoleRequirement> shiftRoleRequirements = new ArrayList<>();
+        List<RatingRequirement> ratingRequirements = new ArrayList<>();
+        Map<String, EmployeeInfo> employeeInfoMap = new HashMap<>();
+        Map<String, Map<java.time.LocalDate, Set<String>>> employeeDateEligibleShifts = new HashMap<>();
+        List<EmployeeAvailability> employeeAvailabilities = new ArrayList<>();
+
+        for (Map<String, Object> shiftInput : shiftsInput) {
+            String shiftName = (String) shiftInput.get("shift_name");
+            allShiftTypes.add(shiftName);
+            String startTimeStr = (String) shiftInput.get("start_time");
+            String endTimeStr = (String) shiftInput.get("end_time");
+            shiftDefinitions.add(new ShiftDefinition(shiftName, startTimeStr, endTimeStr));
+
+            java.time.LocalDate startDate = java.time.LocalDate.parse((String) shiftInput.get("start_date"));
+            java.time.LocalDate endDate = java.time.LocalDate.parse((String) shiftInput.get("end_date"));
+            List<java.time.LocalDate> shiftDates = startDate.datesUntil(endDate.plusDays(1)).collect(java.util.stream.Collectors.toList());
+            allDates.addAll(shiftDates);
+
+            // Roles -> ShiftRoleRequirement
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> rolesInput = (List<Map<String, Object>>) shiftInput.get("roles");
+            if (rolesInput != null) {
+                for (java.time.LocalDate date : shiftDates) {
+                    for (Map<String, Object> roleInput : rolesInput) {
+                        String roleName = (String) roleInput.get("role_name");
+                        int maxWorkers = parseNumber(roleInput.get("max_workers")).intValue();
+                        shiftRoleRequirements.add(new ShiftRoleRequirement(date.toString(), shiftName, roleName, maxWorkers));
+                    }
+                }
+                
+                // Parse rating requirements once per role to avoid duplicates
+                Set<String> processedRoles = new HashSet<>();
+                for (Map<String, Object> roleInput : rolesInput) {
+                    String roleName = (String) roleInput.get("role_name");
+                    if (roleName != null && processedRoles.add(roleName)) {
+                        if (roleInput.containsKey("rating")) {
+                            Object ratingObj = roleInput.get("rating");
+                            List<Integer> allowedRatings = new ArrayList<>();
+                            if (ratingObj instanceof Number) {
+                                int min = ((Number) ratingObj).intValue();
+                                for (int r = min; r <= 5; r++) allowedRatings.add(r);
+                            } else if (ratingObj instanceof String) {
+                                String s = ((String) ratingObj).toLowerCase();
+                                if (s.contains("any") || s.contains("all")) {
+                                    for (int r = 1; r <= 5; r++) allowedRatings.add(r);
+                                } else {
+                                    try { 
+                                        int min = Integer.parseInt(s); 
+                                        for (int r = min; r <= 5; r++) allowedRatings.add(r); 
+                                    } catch (NumberFormatException e) { 
+                                        for (int r = 1; r <= 5; r++) allowedRatings.add(r); 
+                                    }
+                                }
+                            } else {
+                                for (int r = 1; r <= 5; r++) allowedRatings.add(r);
+                            }
+                            ratingRequirements.add(new RatingRequirement(roleName, allowedRatings));
+                        } else {
+                            ratingRequirements.add(new RatingRequirement(roleName, List.of(3, 4, 5)));
+                        }
+                    }
+                }
+            }
+
+            // Users
+            @SuppressWarnings("unchecked")
+            List<Map<String, Object>> usersInput = (List<Map<String, Object>>) shiftInput.get("existing_users");
+            if (usersInput != null) {
+                for (Map<String, Object> userInput : usersInput) {
+                    String empId = (String) userInput.get("employee_id");
+
+                    if (!employeeInfoMap.containsKey(empId)) {
+                        EmployeeInfo emp = new EmployeeInfo();
+                        emp.setId(empId);
+                        emp.setName((String) userInput.get("name"));
+                        emp.setPosition((String) userInput.get("role"));
+                        emp.setCategory((String) userInput.get("employeeType"));
+                        emp.setGender((String) userInput.get("gender"));
+                        
+                        double hourlyWage = userInput.containsKey("rate") ? parseNumber(userInput.get("rate")).doubleValue() : 0.0;
+                        String unit = (String) userInput.get("unit");
+                        if ("day".equalsIgnoreCase(unit)) {
+                            hourlyWage = hourlyWage / 8.0;
+                        } else if ("month".equalsIgnoreCase(unit)) {
+                            hourlyWage = hourlyWage / (22.0 * 8.0);
+                        }
+                        emp.setHourlyWage(hourlyWage);
+                        
+                        emp.setPerformanceRating(userInput.containsKey("rating") ? parseNumber(userInput.get("rating")).intValue() : 3);
+                        employeeInfoMap.put(empId, emp);
+
+                        // Parse availability
+                        if (userInput.containsKey("availability")) {
+                            @SuppressWarnings("unchecked")
+                            Map<String, Map<String, Object>> availMap = (Map<String, Map<String, Object>>) userInput.get("availability");
+                            for (Map.Entry<String, Map<String, Object>> entry : availMap.entrySet()) {
+                                String dateStr = entry.getKey();
+                                Map<String, Object> availProps = entry.getValue();
+                                String status = (String) availProps.get("status");
+                                java.time.LocalTime from = availProps.containsKey("from") && availProps.get("from") != null ? java.time.LocalTime.parse((String) availProps.get("from")) : null;
+                                java.time.LocalTime to = availProps.containsKey("to") && availProps.get("to") != null ? java.time.LocalTime.parse((String) availProps.get("to")) : null;
+                                employeeAvailabilities.add(new EmployeeAvailability(empId, dateStr, status, from, to));
+                            }
+                        }
+                    }
+
+                    // Mark eligibility for this shift on these dates
+                    employeeDateEligibleShifts.computeIfAbsent(empId, k -> new HashMap<>());
+                    for (java.time.LocalDate date : shiftDates) {
+                        employeeDateEligibleShifts.get(empId)
+                                .computeIfAbsent(date, k -> new HashSet<>())
+                                .add(shiftName);
+                    }
+                }
+            }
+        }
+
+        if (allDates.isEmpty()) {
+            return Map.of("status", "error", "message", "No valid date ranges provided in shifts");
+        }
+
+        List<java.time.LocalDate> sortedDates = new ArrayList<>(allDates);
+        Collections.sort(sortedDates);
+        String minDateStr = sortedDates.get(0).toString();
+        String maxDateStr = sortedDates.get(sortedDates.size() - 1).toString();
+
+        // Active Constraints dynamically
+        List<ConstraintConfig> activeConstraints = new ArrayList<>();
+        for (ConstraintConfig cc : constraintConfigs) {
+            ConstraintConfig copy = new ConstraintConfig(cc.getConstraintId(), cc.getConstraintName(), cc.getDescription(), cc.getSeverity(), cc.getParameterValue(), cc.getParameterName());
+            copy.setEnabled(cc.isEnabled());
+            if (optimization.equals("cost") && copy.getConstraintName().equals("maximizeRating")) {
+                copy.setEnabled(false);
+            } else if (optimization.equals("quality") && copy.getConstraintName().equals("wageOptimization")) {
+                copy.setEnabled(false);
+            }
+            activeConstraints.add(copy);
+        }
+
+        // Average Wage Calculations
+        Map<String, Double> sumPerRole = new HashMap<>();
+        Map<String, Integer> countPerRole = new HashMap<>();
+        for (EmployeeInfo emp : employeeInfoMap.values()) {
+            sumPerRole.merge(emp.getPosition(), emp.getHourlyWage(), Double::sum);
+            countPerRole.merge(emp.getPosition(), 1, Integer::sum);
+        }
+        Map<String, Double> averageWagePerRole = new HashMap<>();
+        for (String role : sumPerRole.keySet()) {
+            averageWagePerRole.put(role, sumPerRole.get(role) / countPerRole.get(role));
+        }
+        WageContext wageContext = new WageContext(averageWagePerRole);
+
+        // Time Limit Formula
+        int employees = employeeInfoMap.size();
+        int days = allDates.size();
+        long perDayBudget = 2L + ((long) employees / 20L);
+        long defaultTimeLimit = Math.max(5L, perDayBudget * days);
+        defaultTimeLimit = Math.min(defaultTimeLimit, 300L); // cap at 5 minutes
+        long defaultUnimprovedLimit = Math.max(2L, defaultTimeLimit / 3L);
+
+        long timeLimit = input.containsKey("time_limit_seconds") ? parseNumber(input.get("time_limit_seconds")).longValue() : defaultTimeLimit;
+        long unimprovedLimit = input.containsKey("unimproved_time_limit_seconds") ? parseNumber(input.get("unimproved_time_limit_seconds")).longValue() : defaultUnimprovedLimit;
+
+        try {
+            ai.timefold.solver.core.config.solver.SolverConfig solverConfig = new ai.timefold.solver.core.config.solver.SolverConfig()
+                    .withSolutionClass(ShiftSchedule.class)
+                    .withEntityClasses(EmployeeAssignment.class)
+                    .withConstraintProviderClass(ShiftConstraintProvider.class)
+                    .withTerminationConfig(new ai.timefold.solver.core.config.solver.termination.TerminationConfig()
+                            .withSpentLimit(java.time.Duration.ofSeconds(timeLimit))
+                            .withUnimprovedSpentLimit(java.time.Duration.ofSeconds(unimprovedLimit)));
+
+            ai.timefold.solver.core.api.solver.SolverFactory<ShiftSchedule> solverFactory = ai.timefold.solver.core.api.solver.SolverFactory.create(solverConfig);
+
+            // Fetch ALL existing assignments for the entire date range
+            Map<String, Set<String>> dbAssignmentsByDate = databaseService.loadAssignmentsForDateRange(minDateStr, maxDateStr);
+            List<ExistingAssignment> existingFacts = new ArrayList<>();
+            for (Map.Entry<String, Set<String>> entry : dbAssignmentsByDate.entrySet()) {
+                for (String empId : entry.getValue()) {
+                    existingFacts.add(new ExistingAssignment(empId, entry.getKey()));
+                }
+            }
+
+            // Build ALL entities across ALL days
+            List<EmployeeAssignment> allEntities = new ArrayList<>();
+            int assignmentIdSeq = 1;
+
+            for (java.time.LocalDate currentDate : sortedDates) {
+                String dateStr = currentDate.toString();
+                for (EmployeeInfo emp : employeeInfoMap.values()) {
+                    Set<String> eligibleShiftsForDate = employeeDateEligibleShifts.getOrDefault(emp.getId(), Collections.emptyMap()).get(currentDate);
+                    if (eligibleShiftsForDate == null || eligibleShiftsForDate.isEmpty()) continue;
+
+                    EmployeeAssignment entity = new EmployeeAssignment(
+                            dateStr + "_" + emp.getId() + "_" + assignmentIdSeq++,
+                            emp.getId(), emp.getName(), dateStr,
+                            emp.getCategory(), emp.getGender(), emp.getDepartment(), emp.getPosition()
+                    );
+                    entity.setHourlyWage(emp.getHourlyWage());
+                    entity.setPerformanceRating(emp.getPerformanceRating());
+                    entity.setLocalDateObj(currentDate);
+                    entity.setActiveConfigs(activeConstraints);
+                    entity.setEligibleShifts(new ArrayList<>(eligibleShiftsForDate));
+                    entity.setShift(null); // Let Timefold assign
+                    entity.setPinned(false);
+                    allEntities.add(entity);
+                }
+            }
+
+            if (allEntities.isEmpty()) {
+                return Map.of("status", "error", "message", "No valid employee assignments could be generated. Check date ranges and existing users.");
+            }
+
+            ShiftSchedule problem = new ShiftSchedule(
+                    allEntities,
+                    allShiftTypes,
+                    new ArrayList<>(), // roleRequirements (unused in global)
+                    ratingRequirements,
+                    activeConstraints,
+                    wageContext,
+                    existingFacts,
+                    shiftRoleRequirements,
+                    shiftDefinitions,
+                    employeeAvailabilities
+            );
+
+            ai.timefold.solver.core.api.solver.Solver<ShiftSchedule> solver = solverFactory.buildSolver();
+            LOG.info(String.format("Starting global solver... Entities: %d, Dates: %d, TimeLimit: %ds", allEntities.size(), days, timeLimit));
+
+            ShiftSchedule solution = solver.solve(problem);
+            long solverTime = System.currentTimeMillis() - startTime;
+            LOG.info("Global Solver finished in " + solverTime + "ms. Score: " + solution.getScore());
+
+            // Build response
+            int totalAssignedCount = 0;
+            Map<String, List<Map<String, Object>>> assignmentsByDate = new TreeMap<>();
+            for (EmployeeAssignment assignment : solution.getAssignments()) {
+                if (assignment.getShift() != null) {
+                    Map<String, Object> details = new HashMap<>();
+                    details.put("employeeId", assignment.getEmployeeId());
+                    details.put("employeeName", assignment.getEmployeeName());
+                    details.put("role", assignment.getPosition());
+                    details.put("employeeType", assignment.getCategory());
+                    details.put("gender", assignment.getGender());
+                    details.put("wage", assignment.getHourlyWage());
+                    details.put("rating", assignment.getPerformanceRating());
+                    details.put("shift_name", assignment.getShift());
+                    
+                    assignmentsByDate.computeIfAbsent(assignment.getDate(), k -> new ArrayList<>()).add(details);
+                    
+                    // Save to DB (mock in test, real in prod)
+                    ShiftDefinition assignedShiftDef = null;
+                    for (ShiftDefinition sd : shiftDefinitions) {
+                        if (sd.getShiftName().equals(assignment.getShift())) {
+                            assignedShiftDef = sd;
+                            break;
+                        }
+                    }
+                    String st = assignedShiftDef != null ? assignedShiftDef.getStartTime() : "00:00";
+                    String et = assignedShiftDef != null ? assignedShiftDef.getEndTime() : "00:00";
+                    
+                    databaseService.syncAssignment(
+                            assignment.getDate(),
+                            assignment.getShift(),
+                            assignment.getEmployeeId(),
+                            assignment.getEmployeeName(),
+                            assignment.getPosition(),
+                            assignment.getCategory(),
+                            assignment.getGender(),
+                            assignment.getPerformanceRating(),
+                            st, et,
+                            assignment.getHourlyWage()
+                    );
+                    totalAssignedCount++;
+                }
+            }
+
+            List<Map<String, Object>> dailySummary = new ArrayList<>();
+            for (Map.Entry<String, List<Map<String, Object>>> entry : assignmentsByDate.entrySet()) {
+                Map<String, Object> daily = new HashMap<>();
+                daily.put("date", entry.getKey());
+                daily.put("assignments", entry.getValue());
+                daily.put("count", entry.getValue().size());
+                
+                Map<String, Integer> roleCounts = new HashMap<>();
+                for (Map<String, Object> a : entry.getValue()) {
+                    String role = (String) a.get("role");
+                    roleCounts.put(role, roleCounts.getOrDefault(role, 0) + 1);
+                }
+                daily.put("role_counts", roleCounts);
+                dailySummary.add(daily);
+            }
+
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("status", "success");
+            responseData.put("period", minDateStr + " to " + maxDateStr);
+            responseData.put("total_working_days", days);
+            responseData.put("new_assignments_made", totalAssignedCount);
+            responseData.put("skipped_count", 0); // Not skipping during solve, noOverlappingShifts handles it
+            responseData.put("solver_time_seconds", solverTime / 1000.0);
+            responseData.put("daily_summary", dailySummary);
+            
+            if (solution.getScore() != null) {
+                responseData.put("score", solution.getScore().toString());
+                responseData.put("is_feasible", solution.getScore().isFeasible());
+            }
+
+            return responseData;
+        } catch (Exception e) {
+            LOG.error("Global solver failed", e);
+            return Map.of("status", "error", "message", e.getMessage());
+        }
+    }
+
     public Map<String, Object> solveShift(Map<String, Object> input) {
         List<String> missingFields = validateShiftInput(input);
         if (!missingFields.isEmpty()) {
@@ -130,7 +463,7 @@ public class SolverService {
             String role = (String) u.get("role");
             String gender = (String) u.get("gender");
             
-            double hourlyWage = parseNumber(u.get("rate")).doubleValue();
+            double hourlyWage = u.containsKey("rate") ? parseNumber(u.get("rate")).doubleValue() : 0.0;
             String unit = (String) u.get("unit");
             if ("day".equalsIgnoreCase(unit)) {
                 hourlyWage = hourlyWage / 8.0;
@@ -247,6 +580,7 @@ public class SolverService {
                     entity.setShiftEndStr(endTimeStr);
                     entity.setLocalDateObj(currentDate);
                     entity.setActiveConfigs(activeConstraints);
+                    entity.setEligibleShifts(shiftTypes); // Per-entity VRP: provide value range
 
                     entity.setShift(null); // Let Timefold assign
                     entity.setPinned(false);
@@ -305,6 +639,8 @@ public class SolverService {
             int skippedCount = allEntities.size() - totalAssignedCount;
             responseData.put("skipped_count", skippedCount);
             responseData.put("solver_score", solution.getScore() != null ? solution.getScore().toString() : "Unknown");
+            responseData.put("score", solution.getScore() != null ? solution.getScore().toString() : "Unknown");
+            responseData.put("is_feasible", solution.getScore() != null && solution.getScore().isFeasible());
 
             // Role Statistics & Assignments by Employee Type
             Map<String, Map<String, Object>> roleStatistics = new HashMap<>();
@@ -656,6 +992,7 @@ public class SolverService {
                     entity.setShiftEndStr(endTimeStr);
                     entity.setLocalDateObj(currentDate);
                     entity.setActiveConfigs(activeConstraints);
+                    entity.setEligibleShifts(shiftTypes); // Per-entity VRP: provide value range
 
                     entity.setShift(null);
                     entity.setPinned(false);

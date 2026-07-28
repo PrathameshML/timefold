@@ -3,6 +3,7 @@ package com.scheduler.model;
 import ai.timefold.solver.core.api.domain.entity.PlanningEntity;
 import ai.timefold.solver.core.api.domain.entity.PlanningPin;
 import ai.timefold.solver.core.api.domain.lookup.PlanningId;
+import ai.timefold.solver.core.api.domain.valuerange.ValueRangeProvider;
 import ai.timefold.solver.core.api.domain.variable.PlanningVariable;
 
 import java.time.LocalDate;
@@ -42,6 +43,13 @@ public class EmployeeAssignment {
     
     // Dynamic constraints configuration reference
     private transient List<ConstraintConfig> activeConfigs;
+
+    // Per-entity value range: each entity carries its own eligible shifts,
+    // computed from the employee's actual shift eligibility (which shifts
+    // they belong to / are available for). This replaces the solution-level
+    // shared value range, preventing the solver from considering assignments
+    // to shifts the employee isn't eligible for.
+    private List<String> eligibleShifts;
     
     @PlanningVariable(valueRangeProviderRefs = "shiftRange", allowsUnassigned = true)
     private String shift;
@@ -106,6 +114,9 @@ public class EmployeeAssignment {
     public void setIsoWeekNum(int isoWeekNum) { this.isoWeekNum = isoWeekNum; }
     public LocalDate getLocalDateObj() { return localDateObj; }
     public void setLocalDateObj(LocalDate localDateObj) { this.localDateObj = localDateObj; }
+    @ValueRangeProvider(id = "shiftRange")
+    public List<String> getEligibleShifts() { return eligibleShifts; }
+    public void setEligibleShifts(List<String> eligibleShifts) { this.eligibleShifts = eligibleShifts; }
     public String getShift() { return shift; }
     public void setShift(String shift) { this.shift = shift; }
     public boolean isPinned() { return pinned; }

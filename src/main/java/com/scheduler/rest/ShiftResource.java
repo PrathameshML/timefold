@@ -52,6 +52,25 @@ public class ShiftResource {
     }
 
     @POST
+    @Path("/shifts/assign-global")
+    public Response assignGlobal(Map<String, Object> input) {
+        LOG.debug("Received global shift assignment request");
+        try {
+            Map<String, Object> result = solverService.solveGlobal(input);
+            if ("error".equals(result.get("status"))) {
+                int errorCode = result.containsKey("error_code") ? (int) result.get("error_code") : Response.Status.BAD_REQUEST.getStatusCode();
+                return Response.status(errorCode).entity(result).build();
+            }
+            return Response.ok(result).build();
+        } catch (Exception e) {
+            LOG.error("Failed to solve global shifts", e);
+            return Response.serverError()
+                    .entity(Map.of("status", "error", "message", e.getMessage()))
+                    .build();
+        }
+    }
+
+    @POST
     @Path("/shifts/batch-assign")
     public Response batchAssignShifts(Map<String, Object> input) {
         Object shiftsObj = input.get("shifts");
