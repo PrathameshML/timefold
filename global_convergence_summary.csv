@@ -1,0 +1,6 @@
+"TestNum","Employees","Days","TotalEntities","TimeLimitSec","Status","WallClockSec","SolverTimeSec","FinalScore","HardScore","MediumScore","SoftScore","IsFeasible","Assignments","TimeToFeasible","TimeToConverge95","TimeToConverge99","LastImprovementAt","NoImprovementGap","TotalScoreEvents","AvgAssignedWage","AvgAssignedRating","ErrorMessage"
+"1","10","7","70","180","SUCCESS","180.1","180.0","0hard/0medium/-11151soft","0","0","-11151","True","21","0","0","0","0","180.0","1","39","4",""
+"2","50","7","350","180","SUCCESS","180.1","180.0","0hard/0medium/-2142soft","0","0","-2142","True","49","0.01","22.61","30.49","30.49","149.5","133","17.57","3.86",""
+"3","100","7","700","240","SUCCESS","240.3","240.0","0hard/0medium/-10878soft","0","0","-10878","True","105","0.01","68.24","116.3","154.99","85.0","256","23.47","4.27",""
+"4","200","7","1400","300","SUCCESS","300.4","300.0","0hard/0medium/-4962soft","0","0","-4962","True","154","0.01","203.06","290.94","296.44","3.6","367","18.81","4.11",""
+"5","300","7","2100","300","SUCCESS","300.5","300.0","0hard/0medium/1070soft","0","0","1070","True","154","0.02","-1","-1","295.86","4.1","480","19.42","4.54",""

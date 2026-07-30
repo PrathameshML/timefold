@@ -227,13 +227,13 @@ public class SolverService {
         }
         WageContext wageContext = new WageContext(averageWagePerRole);
 
-        // Time Limit Formula
+        // Time Limit Formula: entity-based scaling
         int employees = employeeInfoMap.size();
         int days = allDates.size();
-        long perDayBudget = 2L + ((long) employees / 20L);
-        long defaultTimeLimit = Math.max(5L, perDayBudget * days);
-        defaultTimeLimit = Math.min(defaultTimeLimit, 300L); // cap at 5 minutes
-        long defaultUnimprovedLimit = Math.max(2L, defaultTimeLimit / 3L);
+        long entities = (long) employees * days;
+        long defaultTimeLimit = Math.max(15L, Math.round(entities * 0.2));
+        defaultTimeLimit = Math.min(defaultTimeLimit, 600L); // cap at 10 minutes
+        long defaultUnimprovedLimit = Math.max(5L, defaultTimeLimit / 3L);
 
         long timeLimit = input.containsKey("time_limit_seconds") ? parseNumber(input.get("time_limit_seconds")).longValue() : defaultTimeLimit;
         long unimprovedLimit = input.containsKey("unimproved_time_limit_seconds") ? parseNumber(input.get("unimproved_time_limit_seconds")).longValue() : defaultUnimprovedLimit;
@@ -303,6 +303,15 @@ public class SolverService {
 
             ai.timefold.solver.core.api.solver.Solver<ShiftSchedule> solver = solverFactory.buildSolver();
             LOG.info(String.format("Starting global solver... Entities: %d, Dates: %d, TimeLimit: %ds", allEntities.size(), days, timeLimit));
+
+            List<Map<String, Object>> scoreEvents = new ArrayList<>();
+            solver.addEventListener(event -> {
+                long elapsedMs = System.currentTimeMillis() - startTime;
+                scoreEvents.add(Map.of(
+                    "elapsed_ms", elapsedMs,
+                    "score", event.getNewBestScore().toString()
+                ));
+            });
 
             ShiftSchedule solution = solver.solve(problem);
             long solverTime = System.currentTimeMillis() - startTime;
@@ -376,6 +385,7 @@ public class SolverService {
             responseData.put("skipped_count", 0); // Not skipping during solve, noOverlappingShifts handles it
             responseData.put("solver_time_seconds", solverTime / 1000.0);
             responseData.put("daily_summary", dailySummary);
+            responseData.put("score_events", scoreEvents);
             
             if (solution.getScore() != null) {
                 responseData.put("score", solution.getScore().toString());
@@ -602,7 +612,16 @@ public class SolverService {
 
             ai.timefold.solver.core.api.solver.Solver<ShiftSchedule> solver = solverFactory.buildSolver();
 
+            List<Map<String, Object>> scoreEvents = new ArrayList<>();
             long startMs = System.currentTimeMillis();
+            solver.addEventListener(event -> {
+                long elapsedMs = System.currentTimeMillis() - startMs;
+                scoreEvents.add(Map.of(
+                    "elapsed_ms", elapsedMs,
+                    "score", event.getNewBestScore().toString()
+                ));
+            });
+
             ShiftSchedule solution = solver.solve(problem);
             totalSolverTimeMs = System.currentTimeMillis() - startMs;
 
@@ -666,6 +685,8 @@ public class SolverService {
                 
                 assignmentsByDate.add(dayResult);
             }
+
+            responseData.put("score_events", scoreEvents);
 
             // Compute role statistics
             for (RoleRequirement req : roleRequirements) {
@@ -1017,7 +1038,16 @@ public class SolverService {
 
             ai.timefold.solver.core.api.solver.Solver<ShiftSchedule> solver = solverFactory.buildSolver();
 
+            List<Map<String, Object>> scoreEvents = new ArrayList<>();
             long startMs = System.currentTimeMillis();
+            solver.addEventListener(event -> {
+                long elapsedMs = System.currentTimeMillis() - startMs;
+                scoreEvents.add(Map.of(
+                    "elapsed_ms", elapsedMs,
+                    "score", event.getNewBestScore().toString()
+                ));
+            });
+
             ShiftSchedule solution = solver.solve(problem);
             totalSolverTimeMs = System.currentTimeMillis() - startMs;
 
@@ -1078,6 +1108,8 @@ public class SolverService {
                 
                 assignmentsByDate.add(dayResult);
             }
+
+            responseData.put("score_events", scoreEvents);
 
             // Compute role statistics
             for (RoleRequirement req : roleRequirements) {
