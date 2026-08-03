@@ -231,8 +231,8 @@ public class SolverService {
         int employees = employeeInfoMap.size();
         int days = allDates.size();
         long entities = (long) employees * days;
-        long defaultTimeLimit = Math.max(15L, Math.round(entities * 0.2));
-        defaultTimeLimit = Math.min(defaultTimeLimit, 600L); // cap at 10 minutes
+        long defaultTimeLimit = Math.max(12L, Math.round(entities * 0.15));
+        defaultTimeLimit = Math.min(defaultTimeLimit, 450L); // cap at 7.5 minutes
         long defaultUnimprovedLimit = Math.max(5L, defaultTimeLimit / 3L);
 
         long timeLimit = input.containsKey("time_limit_seconds") ? parseNumber(input.get("time_limit_seconds")).longValue() : defaultTimeLimit;
@@ -524,10 +524,10 @@ public class SolverService {
         // We match that total budget so multi-day solves get equivalent thinking time.
         int employees = employeeInfoMap.size();
         int days = dateRange.size();
-        long perDayBudget = 2L + ((long) employees / 20L);
-        long defaultTimeLimit = Math.max(5L, perDayBudget * days);
-        defaultTimeLimit = Math.min(defaultTimeLimit, 300L); // cap at 5 minutes
-        long defaultUnimprovedLimit = Math.max(2L, defaultTimeLimit / 3L);
+        long perDayBudget = 1L + ((long) employees / 25L);
+        long defaultTimeLimit = Math.max(4L, perDayBudget * days);
+        defaultTimeLimit = Math.min(defaultTimeLimit, 240L); // cap at 4 minutes
+        long defaultUnimprovedLimit = Math.max(3L, defaultTimeLimit / 3L);
 
         long timeLimit = input.containsKey("time_limit_seconds") ? ((Number) input.get("time_limit_seconds")).longValue() : defaultTimeLimit;
         long unimprovedLimit = input.containsKey("unimproved_time_limit_seconds") ? ((Number) input.get("unimproved_time_limit_seconds")).longValue() : defaultUnimprovedLimit;
