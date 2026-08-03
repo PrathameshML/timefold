@@ -71,6 +71,25 @@ public class ShiftResource {
     }
 
     @POST
+    @Path("/shifts/assign-global-v2")
+    public Response assignGlobalV2(Map<String, Object> input) {
+        LOG.info("Received Global-V2 (slot-based) shift assignment request");
+        try {
+            Map<String, Object> result = solverService.solveGlobalV2(input);
+            if ("error".equals(result.get("status"))) {
+                int errorCode = result.containsKey("error_code") ? ((Number) result.getOrDefault("error_code", 400)).intValue() : Response.Status.BAD_REQUEST.getStatusCode();
+                return Response.status(errorCode).entity(result).build();
+            }
+            return Response.ok(result).build();
+        } catch (Exception e) {
+            LOG.error("Failed to solve global shifts (V2 slot-based)", e);
+            return Response.serverError()
+                    .entity(Map.of("status", "error", "message", e.getMessage()))
+                    .build();
+        }
+    }
+
+    @POST
     @Path("/shifts/batch-assign")
     public Response batchAssignShifts(Map<String, Object> input) {
         Object shiftsObj = input.get("shifts");
