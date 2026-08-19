@@ -307,9 +307,14 @@ public class SolverService {
             List<Map<String, Object>> scoreEvents = new ArrayList<>();
             solver.addEventListener(event -> {
                 long elapsedMs = System.currentTimeMillis() - startTime;
+                ShiftSchedule sol = event.getNewBestSolution();
+                long filled = sol != null && sol.getAssignments() != null
+                        ? sol.getAssignments().stream().filter(a -> a.getShift() != null && !a.getShift().isEmpty()).count()
+                        : 0;
                 scoreEvents.add(Map.of(
                     "elapsed_ms", elapsedMs,
-                    "score", event.getNewBestScore().toString()
+                    "score", event.getNewBestScore().toString(),
+                    "filled_slots", filled
                 ));
             });
 
@@ -919,9 +924,8 @@ public class SolverService {
 
         // ---- Time limit (based on SLOT count, not employee×day) ----
         int totalSlotCount = shiftRoleRequirements.stream().mapToInt(ShiftRoleRequirement::getMaxWorkers).sum();
-        long defaultTimeLimit = Math.max(12L, Math.round(totalSlotCount * 0.15));
-        defaultTimeLimit = Math.min(defaultTimeLimit, 450L);
-        long defaultUnimprovedLimit = Math.max(5L, defaultTimeLimit / 3L);
+        long defaultTimeLimit = Math.min(90L, Math.max(5L, Math.round(totalSlotCount * 0.02)));
+        long defaultUnimprovedLimit = Math.min(30L, Math.max(5L, Math.round(defaultTimeLimit / 3.0)));
 
         long timeLimit = input.containsKey("time_limit_seconds") ? parseNumber(input.get("time_limit_seconds")).longValue() : defaultTimeLimit;
         long unimprovedLimit = input.containsKey("unimproved_time_limit_seconds") ? parseNumber(input.get("unimproved_time_limit_seconds")).longValue() : defaultUnimprovedLimit;
@@ -994,15 +998,20 @@ public class SolverService {
             );
 
             ai.timefold.solver.core.api.solver.Solver<ShiftScheduleSlot> solver = solverFactory.buildSolver();
-            LOG.info(String.format("Starting Global-V2 solver... Slots: %d, Employees: %d, Dates: %d, TimeLimit: %ds",
-                    allSlots.size(), employeeInfoMap.size(), days, timeLimit));
+            LOG.info(String.format("Starting Global-V2 solver... Slots: %d, Employees: %d, Dates: %d, TimeLimit: %ds, UnimprovedLimit: %ds",
+                    allSlots.size(), employeeInfoMap.size(), days, timeLimit, unimprovedLimit));
 
             List<Map<String, Object>> scoreEvents = new ArrayList<>();
             solver.addEventListener(event -> {
                 long elapsedMs = System.currentTimeMillis() - startTime;
+                ShiftScheduleSlot sol = event.getNewBestSolution();
+                long filled = sol != null && sol.getSlots() != null
+                        ? sol.getSlots().stream().filter(s -> s.getEmployeeId() != null).count()
+                        : 0;
                 scoreEvents.add(Map.of(
                     "elapsed_ms", elapsedMs,
-                    "score", event.getNewBestScore().toString()
+                    "score", event.getNewBestScore().toString(),
+                    "filled_slots", filled
                 ));
             });
 
