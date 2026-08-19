@@ -64,7 +64,7 @@ public class ConstraintAndOptimizationTest {
             )
         ));
 
-        Map<String, Object> result = solverService.solveShift(req);
+        Map<String, Object> result = solverService.solveShiftV2(req);
         assertEquals("success", result.get("status"));
         
         List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("daily_summary");
@@ -114,7 +114,7 @@ public class ConstraintAndOptimizationTest {
             )
         ));
 
-        Map<String, Object> result = solverService.solveShift(req);
+        Map<String, Object> result = solverService.solveShiftV2(req);
         assertEquals("success", result.get("status"));
         
         List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("daily_summary");

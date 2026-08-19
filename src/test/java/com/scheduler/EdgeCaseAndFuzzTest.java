@@ -51,7 +51,7 @@ public class EdgeCaseAndFuzzTest {
             Map.of("employee_id", "E1", "name", "E1", "role", "Developer", "rate", 20, "unit", "hour", "rating", 5, "employeeType", "Perm", "gender", "M")
         ));
 
-        Map<String, Object> result = solverService.solveShift(req);
+        Map<String, Object> result = solverService.solveShiftV2(req);
         assertEquals("success", result.get("status"));
         
         // Should only assign 1 and soft-penalize (which is a valid solver solution for impossible situations)
@@ -93,7 +93,7 @@ public class EdgeCaseAndFuzzTest {
             req.put("existing_users", employees);
 
             // Execute fuzzed dataset
-            Map<String, Object> result = solverService.solveShift(req);
+            Map<String, Object> result = solverService.solveShiftV2(req);
             
             // Assert no exceptions or internal solver crashes
             assertEquals("success", result.get("status"));

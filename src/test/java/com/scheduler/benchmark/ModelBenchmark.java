@@ -190,7 +190,7 @@ public class ModelBenchmark {
                 entities, List.of(sc.shiftNames),
                 new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
                 new WageContext(Map.of(ROLE, avgWage)),
-                new ArrayList<>(), reqs, new ArrayList<>(), new ArrayList<>()
+                new ArrayList<>(), new ArrayList<>(), new ArrayList<>()
         );
 
         SolverConfig config = new SolverConfig()

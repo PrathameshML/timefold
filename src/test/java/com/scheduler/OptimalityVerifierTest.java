@@ -62,7 +62,7 @@ public class OptimalityVerifierTest {
             Map.of("employee_id", "E4", "name", "E4", "role", "Developer", "rate", 15, "unit", "hour", "rating", 3, "employeeType", "Perm", "gender", "M")
         ));
 
-        Map<String, Object> result = solverService.solveShift(req);
+        Map<String, Object> result = solverService.solveShiftV2(req);
         assertEquals("success", result.get("status"));
         
         List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("daily_summary");

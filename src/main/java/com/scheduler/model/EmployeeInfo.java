@@ -70,6 +70,11 @@ public class EmployeeInfo {
 
     public void addSkill(String skill) { skills.add(skill); }
 
+    // Multi-role support for Global V2 (employee can fill multiple roles across shifts)
+    private Set<String> roles = new HashSet<>();
+    public void addRole(String role) { if (role != null) roles.add(role); }
+    public Set<String> getRoles() { return roles; }
+
     // V2: Availability methods
     public Map<LocalDate, AvailabilityEntry> getAvailabilityMap() { return availabilityMap; }
     public void setAvailabilityMap(Map<LocalDate, AvailabilityEntry> availabilityMap) { this.availabilityMap = availabilityMap; }

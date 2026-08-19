@@ -33,7 +33,7 @@ public class TimeLimitFormulaTest {
         // 1 employee × 1 day: perDayBudget = 2 + (1/20) = 2, total = max(5, 2*1) = 5s
         Map<String, Object> req = createRequest(1, 1);
         long startTime = System.currentTimeMillis();
-        solverService.solveShift(req);
+        solverService.solveShiftV2(req);
         long endTime = System.currentTimeMillis();
         long durationSec = (endTime - startTime) / 1000;
         
@@ -46,7 +46,7 @@ public class TimeLimitFormulaTest {
         // 40 employees × 1 day: perDayBudget = 2 + (40/20) = 4, total = max(5, 4*1) = 5s
         Map<String, Object> req = createRequest(40, 1);
         long startTime = System.currentTimeMillis();
-        solverService.solveShift(req);
+        solverService.solveShiftV2(req);
         long endTime = System.currentTimeMillis();
         long durationSec = (endTime - startTime) / 1000;
         
@@ -59,7 +59,7 @@ public class TimeLimitFormulaTest {
         // 100 employees × 1 day: perDayBudget = 2 + (100/20) = 7, total = max(5, 7*1) = 7s
         Map<String, Object> req = createRequest(100, 1);
         long startTime = System.currentTimeMillis();
-        solverService.solveShift(req);
+        solverService.solveShiftV2(req);
         long endTime = System.currentTimeMillis();
         long durationSec = (endTime - startTime) / 1000;
         
@@ -72,7 +72,7 @@ public class TimeLimitFormulaTest {
         // 10 employees × 7 days: perDayBudget = 2 + (10/20) = 2, total = max(5, 2*7) = 14s
         Map<String, Object> req = createRequest(10, 7);
         long startTime = System.currentTimeMillis();
-        solverService.solveShift(req);
+        solverService.solveShiftV2(req);
         long endTime = System.currentTimeMillis();
         long durationSec = (endTime - startTime) / 1000;
         

@@ -46,7 +46,7 @@ public class DeterminismVerificationTest {
             // 1s limit to keep the 100 runs fast, but ensures enough time to reach local optima on tiny dataset
             req.put("time_limit_seconds", 1);
             
-            Map<String, Object> result = solverService.solveShift(req);
+            Map<String, Object> result = solverService.solveShiftV2(req);
             assertEquals("success", result.get("status"));
             
             List<Map<String, Object>> assignments = (List<Map<String, Object>>) result.get("daily_summary");

@@ -36,7 +36,7 @@ public class DatabaseIntegrityTest {
 
         // 1. Assign E1 to Morning Shift
         Map<String, Object> req1 = createBasicRequest("Morning Shift", "E1");
-        solverService.solveShift(req1);
+        solverService.solveShiftV2(req1);
 
         // Verify E1 was assigned to Morning
         Map<String, String> savedAfterMorning = databaseService.loadAssignmentsForDate("2026-10-01");
@@ -46,7 +46,7 @@ public class DatabaseIntegrityTest {
         //    The noOverlappingShifts constraint (via ExistingAssignment ProblemFact)
         //    should prevent E1 from being assigned again.
         Map<String, Object> req2 = createBasicRequest("Evening Shift", "E1");
-        solverService.solveShift(req2);
+        solverService.solveShiftV2(req2);
 
         // 3. Verify E1 is NOT double-booked
         try (java.sql.Connection conn = dataSource.getConnection();

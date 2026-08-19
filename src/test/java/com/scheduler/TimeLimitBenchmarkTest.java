@@ -118,7 +118,7 @@ public class TimeLimitBenchmarkTest {
         Map<String, Object> req = createRequest(totalEmp, neededPerDay, days, -1, -1, "both");
         
         long startMs = System.currentTimeMillis();
-        Map<String, Object> result = solverService.solveShift(req);
+        Map<String, Object> result = solverService.solveShiftV2(req);
         long actualMs = System.currentTimeMillis() - startMs;
         double actualSec = actualMs / 1000.0;
         
@@ -157,7 +157,7 @@ public class TimeLimitBenchmarkTest {
                 Map<String, Object> req = createRequest(totalEmp, neededPerDay, days, tl, unimproved, optMode, r);
 
                 long startMs = System.currentTimeMillis();
-                Map<String, Object> result = solverService.solveShift(req);
+                Map<String, Object> result = solverService.solveShiftV2(req);
                 long actualMs = System.currentTimeMillis() - startMs;
                 sumActualSec += (actualMs / 1000.0);
 

@@ -72,7 +72,7 @@ public class ScaleAndConcurrencyTest {
                         )
                     ));
 
-                    Map<String, Object> result = solverService.solveShift(req);
+                    Map<String, Object> result = solverService.solveShiftV2(req);
                     if ("success".equals(result.get("status"))) {
                         successCount.incrementAndGet();
                     } else {
@@ -138,7 +138,7 @@ public class ScaleAndConcurrencyTest {
                         )
                     ));
 
-                    Map<String, Object> result = solverService.solveShift(req);
+                    Map<String, Object> result = solverService.solveShiftV2(req);
                     if ("success".equals(result.get("status"))) {
                         successCount.incrementAndGet();
                     } else {
@@ -189,7 +189,7 @@ public class ScaleAndConcurrencyTest {
         }
         req.put("existing_users", employees);
 
-        Map<String, Object> result = solverService.solveShift(req);
+        Map<String, Object> result = solverService.solveShiftV2(req);
         assertEquals("success", result.get("status"));
         
         int assigned = (int) result.getOrDefault("new_assignments_made", 0);

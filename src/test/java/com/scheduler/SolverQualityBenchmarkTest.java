@@ -53,7 +53,7 @@ public class SolverQualityBenchmarkTest {
             Map<String, Object> req = createBenchmarkRequest(limit);
 
             long startMs = System.currentTimeMillis();
-            Map<String, Object> result = solverService.solveShift(req);
+            Map<String, Object> result = solverService.solveShiftV2(req);
             long endMs = System.currentTimeMillis();
             
             MemoryUsage heapEnd = memoryBean.getHeapMemoryUsage();

@@ -32,8 +32,6 @@ public class ShiftSchedule {
     @ProblemFactCollectionProperty
     private List<ExistingAssignment> existingAssignments;
 
-    @ProblemFactCollectionProperty
-    private List<ShiftRoleRequirement> shiftRoleRequirements;
 
     @ProblemFactCollectionProperty
     private List<ShiftDefinition> shiftDefinitions;
@@ -51,8 +49,8 @@ public class ShiftSchedule {
 
     public ShiftSchedule() {}
 
-    // Backward-compatible constructor (V1/V2 callers) — delegates to the full constructor
-    // with empty shiftRoleRequirements, shiftDefinitions, and employeeAvailabilities lists.
+    // Constructor used by solveShiftV2() — delegates to the full constructor
+    // with empty shiftDefinitions and employeeAvailabilities lists.
     public ShiftSchedule(List<EmployeeAssignment> assignments, List<String> shiftTypes,
                          List<RoleRequirement> roleRequirements,
                          List<RatingRequirement> ratingRequirements,
@@ -60,17 +58,16 @@ public class ShiftSchedule {
                          WageContext wageContext,
                          List<ExistingAssignment> existingAssignments) {
         this(assignments, shiftTypes, roleRequirements, ratingRequirements, constraintConfigs,
-             wageContext, existingAssignments, new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+             wageContext, existingAssignments, new ArrayList<>(), new ArrayList<>());
     }
 
-    // Full constructor (global optimization callers)
+    // Full constructor
     public ShiftSchedule(List<EmployeeAssignment> assignments, List<String> shiftTypes,
                          List<RoleRequirement> roleRequirements,
                          List<RatingRequirement> ratingRequirements,
                          List<ConstraintConfig> constraintConfigs,
                          WageContext wageContext,
                          List<ExistingAssignment> existingAssignments,
-                         List<ShiftRoleRequirement> shiftRoleRequirements,
                          List<ShiftDefinition> shiftDefinitions,
                          List<EmployeeAvailability> employeeAvailabilities) {
         this.assignments = assignments;
@@ -80,7 +77,6 @@ public class ShiftSchedule {
         this.constraintConfigs = constraintConfigs;
         this.wageContext = wageContext;
         this.existingAssignments = existingAssignments;
-        this.shiftRoleRequirements = shiftRoleRequirements;
         this.shiftDefinitions = shiftDefinitions;
         this.employeeAvailabilities = employeeAvailabilities;
     }
@@ -99,8 +95,7 @@ public class ShiftSchedule {
     public void setConstraintConfigs(List<ConstraintConfig> constraintConfigs) { this.constraintConfigs = constraintConfigs; }
     public List<ExistingAssignment> getExistingAssignments() { return existingAssignments; }
     public void setExistingAssignments(List<ExistingAssignment> existingAssignments) { this.existingAssignments = existingAssignments; }
-    public List<ShiftRoleRequirement> getShiftRoleRequirements() { return shiftRoleRequirements; }
-    public void setShiftRoleRequirements(List<ShiftRoleRequirement> shiftRoleRequirements) { this.shiftRoleRequirements = shiftRoleRequirements; }
+
     public List<ShiftDefinition> getShiftDefinitions() { return shiftDefinitions; }
     public void setShiftDefinitions(List<ShiftDefinition> shiftDefinitions) { this.shiftDefinitions = shiftDefinitions; }
     public List<EmployeeAvailability> getEmployeeAvailabilities() { return employeeAvailabilities; }
