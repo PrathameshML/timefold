@@ -83,11 +83,11 @@ public class SolverService {
         String optimization = (String) input.getOrDefault("optimization", "both");
 
         Set<java.time.LocalDate> allDates = new HashSet<>();
-        List<ShiftDefinition> shiftDefinitions = new ArrayList<>();
+        Set<ShiftDefinition> shiftDefinitions = new LinkedHashSet<>();
         List<ShiftRoleRequirement> shiftRoleRequirements = new ArrayList<>();
-        List<RatingRequirement> ratingRequirements = new ArrayList<>();
+        Set<RatingRequirement> ratingRequirements = new LinkedHashSet<>();
         Map<String, EmployeeInfo> employeeInfoMap = new HashMap<>();
-        List<EmployeeAvailability> employeeAvailabilities = new ArrayList<>();
+        Set<EmployeeAvailability> employeeAvailabilities = new LinkedHashSet<>();
 
         // ---- Parse input (identical to solveGlobal) ----
         for (Map<String, Object> shiftInput : shiftsInput) {
@@ -300,9 +300,9 @@ public class SolverService {
                     employeeFacts,
                     activeConstraints,
                     existingFacts,
-                    ratingRequirements,
-                    shiftDefinitions,
-                    employeeAvailabilities,
+                    new ArrayList<>(ratingRequirements),
+                    new ArrayList<>(shiftDefinitions),
+                    new ArrayList<>(employeeAvailabilities),
                     wageContext
             );
 
