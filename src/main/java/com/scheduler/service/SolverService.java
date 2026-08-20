@@ -310,28 +310,15 @@ public class SolverService {
             LOG.info(String.format("Starting Global-V2 solver... Slots: %d, Employees: %d, Dates: %d, TimeLimit: %ds, UnimprovedLimit: %ds",
                     allSlots.size(), employeeInfoMap.size(), days, timeLimit, unimprovedLimit));
 
-            List<Map<String, Object>> scoreEvents = new ArrayList<>();
-            solver.addEventListener(event -> {
-                long elapsedMs = System.currentTimeMillis() - startTime;
-                ShiftScheduleSlot sol = event.getNewBestSolution();
-                long filled = sol != null && sol.getSlots() != null
-                        ? sol.getSlots().stream().filter(s -> s.getEmployeeId() != null).count()
-                        : 0;
-                scoreEvents.add(Map.of(
-                    "elapsed_ms", elapsedMs,
-                    "score", event.getNewBestScore().toString(),
-                    "filled_slots", filled
-                ));
-            });
-
             // ---- Solve ----
             ShiftScheduleSlot solution = solver.solve(problem);
             long solverTime = System.currentTimeMillis() - startTime;
             LOG.info("Global-V2 Solver finished in " + solverTime + "ms. Score: " + solution.getScore());
 
-            // ---- Build response (same format as solveGlobal) ----
-            int totalAssignedCount = 0;
-            Map<String, List<Map<String, Object>>> assignmentsByDate = new TreeMap<>();
+            // ---- Build response (batch-assign compatible format) ----
+
+            // 1. Group solved slots: shiftName → date → assignments, and sync to DB
+            Map<String, Map<String, List<Map<String, Object>>>> slotsByShift = new LinkedHashMap<>();
 
             for (ShiftSlot slot : solution.getSlots()) {
                 if (slot.getEmployeeId() != null) {
@@ -346,11 +333,13 @@ public class SolverService {
                     details.put("gender", emp.getGender());
                     details.put("wage", emp.getHourlyWage());
                     details.put("rating", emp.getPerformanceRating());
-                    details.put("shift_name", slot.getShiftName());
 
-                    assignmentsByDate.computeIfAbsent(slot.getDate(), k -> new ArrayList<>()).add(details);
+                    slotsByShift
+                        .computeIfAbsent(slot.getShiftName(), k -> new TreeMap<>())
+                        .computeIfAbsent(slot.getDate(), k -> new ArrayList<>())
+                        .add(details);
 
-                    // Save to DB
+                    // Save to DB (unchanged — uses slot.getRole())
                     ShiftDefinition assignedShiftDef = null;
                     for (ShiftDefinition sd : shiftDefinitions) {
                         if (sd.getShiftName().equals(slot.getShiftName())) {
@@ -368,42 +357,159 @@ public class SolverService {
                             emp.getPerformanceRating(), st, et,
                             emp.getHourlyWage()
                     );
-                    totalAssignedCount++;
                 }
             }
 
-            List<Map<String, Object>> dailySummary = new ArrayList<>();
-            for (Map.Entry<String, List<Map<String, Object>>> entry : assignmentsByDate.entrySet()) {
-                Map<String, Object> daily = new HashMap<>();
-                daily.put("date", entry.getKey());
-                daily.put("assignments", entry.getValue());
-                daily.put("count", entry.getValue().size());
+            // 2. Constraint violations (real analysis, same pattern as solveShiftV2)
+            List<String> constraintViolations = new ArrayList<>();
+            if (solution.getScore() != null && !solution.getScore().isFeasible()) {
+                ai.timefold.solver.core.api.solver.SolutionManager<ShiftScheduleSlot, ai.timefold.solver.core.api.score.buildin.hardmediumsoftlong.HardMediumSoftLongScore> solutionManager = ai.timefold.solver.core.api.solver.SolutionManager.create(solverFactory);
+                ai.timefold.solver.core.api.score.analysis.ScoreAnalysis<ai.timefold.solver.core.api.score.buildin.hardmediumsoftlong.HardMediumSoftLongScore> scoreAnalysis = solutionManager.analyze(solution);
 
-                Map<String, Integer> roleCounts = new HashMap<>();
-                for (Map<String, Object> a : entry.getValue()) {
-                    String role = (String) a.get("role");
-                    roleCounts.put(role, roleCounts.getOrDefault(role, 0) + 1);
+                for (ai.timefold.solver.core.api.score.analysis.ConstraintAnalysis<ai.timefold.solver.core.api.score.buildin.hardmediumsoftlong.HardMediumSoftLongScore> ca : scoreAnalysis.constraintMap().values()) {
+                    if (ca.score().hardScore() < 0) {
+                        constraintViolations.add("Violated Constraint: " + ca.constraintRef().constraintName() +
+                                " (Score impact: " + ca.score().hardScore() + ")");
+                    }
                 }
-                daily.put("role_counts", roleCounts);
-                dailySummary.add(daily);
             }
 
-            Map<String, Object> responseData = new HashMap<>();
-            responseData.put("status", "success");
-            responseData.put("period", minDateStr + " to " + maxDateStr);
-            responseData.put("total_working_days", days);
-            responseData.put("new_assignments_made", totalAssignedCount);
-            responseData.put("skipped_count", 0);
-            responseData.put("solver_time_seconds", solverTime / 1000.0);
-            responseData.put("daily_summary", dailySummary);
-            responseData.put("score_events", scoreEvents);
-            responseData.put("total_slots", allSlots.size());
-            responseData.put("model", "slot-based-v2");
+            // 3. Build per-shift result blocks
+            List<Map<String, Object>> shiftResults = new ArrayList<>();
+            int totalAssignedCount = 0;
+            int totalSkippedCount = 0;
+            int shiftIndex = 0;
+
+            for (ShiftDefinition shiftDef : shiftDefinitions) {
+                String sn = shiftDef.getShiftName();
+                Map<String, List<Map<String, Object>>> dateAssignments =
+                    slotsByShift.getOrDefault(sn, Collections.emptyMap());
+
+                // Gather shift-level metadata from ShiftRoleRequirements
+                int entitiesPlanned = 0;
+                Set<String> shiftDates = new TreeSet<>();
+                Map<String, Integer> maxPerDayByRole = new HashMap<>();
+                Set<String> shiftRoles = new LinkedHashSet<>();
+
+                for (ShiftRoleRequirement req : shiftRoleRequirements) {
+                    if (req.getShiftName().equals(sn)) {
+                        entitiesPlanned += req.getMaxWorkers();
+                        shiftDates.add(req.getDate());
+                        shiftRoles.add(req.getRoleName());
+                        maxPerDayByRole.put(req.getRoleName(), req.getMaxWorkers());
+                    }
+                }
+
+                String sMinDate = shiftDates.isEmpty() ? "" : shiftDates.iterator().next();
+                String sMaxDate = shiftDates.isEmpty() ? "" : ((java.util.TreeSet<String>) shiftDates).last();
+
+                // Build daily_summary + accumulate stats for this shift
+                List<Map<String, Object>> dailySummary = new ArrayList<>();
+                int shiftAssignedCount = 0;
+                Map<String, Long> assignmentsByEmpType = new HashMap<>();
+                Map<String, Integer> totalRoleAssignments = new HashMap<>();
+                Map<String, Double> totalRoleWages = new HashMap<>();
+
+                for (String date : shiftDates) {
+                    List<Map<String, Object>> dayAssignments =
+                        dateAssignments.getOrDefault(date, Collections.emptyList());
+
+                    Map<String, Object> daySummary = new HashMap<>();
+                    daySummary.put("date", date);
+                    daySummary.put("assignments", dayAssignments);
+                    daySummary.put("count", dayAssignments.size());
+
+                    Map<String, Integer> roleCounts = new HashMap<>();
+                    for (Map<String, Object> a : dayAssignments) {
+                        String role = (String) a.get("role");
+                        roleCounts.merge(role, 1, Integer::sum);
+                        totalRoleAssignments.merge(role, 1, Integer::sum);
+                        Number wageNum = (Number) a.get("wage");
+                        if (wageNum != null) totalRoleWages.merge(role, wageNum.doubleValue(), Double::sum);
+                        String empType = (String) a.get("employeeType");
+                        assignmentsByEmpType.merge(empType, 1L, Long::sum);
+                    }
+                    daySummary.put("role_counts", roleCounts);
+                    dailySummary.add(daySummary);
+                    shiftAssignedCount += dayAssignments.size();
+                }
+
+                int shiftSkipped = entitiesPlanned - shiftAssignedCount;
+
+                // role_statistics
+                Map<String, Map<String, Object>> roleStatistics = new HashMap<>();
+                for (String role : shiftRoles) {
+                    int count = totalRoleAssignments.getOrDefault(role, 0);
+                    double totalWage = totalRoleWages.getOrDefault(role, 0.0);
+                    Map<String, Object> stats = new HashMap<>();
+                    stats.put("assignments", count);
+                    stats.put("average_wage", count > 0
+                        ? String.format(java.util.Locale.US, "%.2f", totalWage / count) : "0.00");
+                    stats.put("max_per_day", maxPerDayByRole.getOrDefault(role, 0));
+                    roleStatistics.put(role, stats);
+                }
+
+                // message
+                String shiftMessage;
+                if (!constraintViolations.isEmpty()) {
+                    shiftMessage = "Schedule solved but with HARD constraint violations!";
+                } else {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("Successfully assigned shifts for ").append(shiftDates.size()).append(" days. ");
+                    sb.append("Total assignments: ").append(shiftAssignedCount).append(". ");
+                    if (shiftSkipped > 0) sb.append("Skipped ").append(shiftSkipped).append(" assignments.");
+                    shiftMessage = sb.toString();
+                }
+
+                // Assemble shift result block
+                Map<String, Object> shiftResult = new HashMap<>();
+                shiftResult.put("status", "success");
+                shiftResult.put("shift_name", sn);
+                shiftResult.put("shift_index", shiftIndex++);
+                shiftResult.put("period", sMinDate + " to " + sMaxDate);
+                shiftResult.put("shift_time", shiftDef.getStartTime() + " - " + shiftDef.getEndTime());
+                shiftResult.put("total_working_days", shiftDates.size());
+                shiftResult.put("solver_time_seconds", solverTime / 1000.0);
+                shiftResult.put("new_assignments_made", shiftAssignedCount);
+                shiftResult.put("entities_planned", entitiesPlanned);
+                shiftResult.put("total_possible_assignments", entitiesPlanned);
+                shiftResult.put("skipped_count", shiftSkipped);
+                shiftResult.put("role_statistics", roleStatistics);
+                shiftResult.put("assignments_by_employee_type", assignmentsByEmpType);
+                shiftResult.put("constraint_violations", constraintViolations);
+                shiftResult.put("message", shiftMessage);
+                shiftResult.put("daily_summary", dailySummary);
+
+                shiftResults.add(shiftResult);
+                totalAssignedCount += shiftAssignedCount;
+                totalSkippedCount += shiftSkipped;
+            }
+
+            // 4. Build outer wrapper (batch-assign compatible)
+            Map<String, Object> overallStats = new HashMap<>();
+            overallStats.put("total_shifts_processed", shiftDefinitions.size());
+            overallStats.put("successful_shifts", (long) shiftDefinitions.size());
+            overallStats.put("failed_shifts", 0L);
+            overallStats.put("total_assignments_made", totalAssignedCount);
+            overallStats.put("total_working_days", days);
+            overallStats.put("total_skipped_assignments", totalSkippedCount);
+            overallStats.put("total_solver_time_seconds", solverTime / 1000.0);
 
             if (solution.getScore() != null) {
-                responseData.put("score", solution.getScore().toString());
-                responseData.put("is_feasible", solution.getScore().isFeasible());
+                overallStats.put("solver_score", solution.getScore().toString());
+                overallStats.put("is_feasible", solution.getScore().isFeasible());
             }
+
+            String summary = String.format(
+                "Successfully processed %d shifts. Total assignments: %d across %d days.",
+                shiftDefinitions.size(), totalAssignedCount, days
+            );
+
+            Map<String, Object> responseData = new HashMap<>();
+            responseData.put("status", "completed");
+            responseData.put("summary", summary);
+            responseData.put("overall_statistics", overallStats);
+            responseData.put("shift_results", shiftResults);
 
             return responseData;
         } catch (Exception e) {
