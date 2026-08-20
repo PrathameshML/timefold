@@ -138,9 +138,9 @@ public class SolverService {
                             } else {
                                 for (int r = 1; r <= 5; r++) allowedRatings.add(r);
                             }
-                            ratingRequirements.add(new RatingRequirement(roleName, allowedRatings));
+                            ratingRequirements.add(new RatingRequirement(shiftName, roleName, allowedRatings));
                         } else {
-                            ratingRequirements.add(new RatingRequirement(roleName, List.of(3, 4, 5)));
+                            ratingRequirements.add(new RatingRequirement(shiftName, roleName, List.of(3, 4, 5)));
                         }
                     }
                 }

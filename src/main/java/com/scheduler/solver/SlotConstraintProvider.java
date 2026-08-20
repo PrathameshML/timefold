@@ -108,6 +108,7 @@ public class SlotConstraintProvider implements ConstraintProvider {
                 .join(EmployeeFact.class,
                         Joiners.equal(ShiftSlot::getEmployeeId, EmployeeFact::getId))
                 .join(RatingRequirement.class,
+                        Joiners.equal((slot, emp) -> slot.getShiftName(), RatingRequirement::getShiftName),
                         Joiners.equal((slot, emp) -> slot.getRole(), RatingRequirement::getRoleName))
                 .filter((slot, emp, ratingReq) -> !ratingReq.getAllowedRatings().contains(emp.getRating()))
                 .penalizeLong(HardMediumSoftLongScore.ONE_HARD, (slot, emp, ratingReq) -> 1L)
