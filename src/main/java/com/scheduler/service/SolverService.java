@@ -427,7 +427,7 @@ public class SolverService {
                         Number wageNum = (Number) a.get("wage");
                         if (wageNum != null) totalRoleWages.merge(role, wageNum.doubleValue(), Double::sum);
                         String empType = (String) a.get("employeeType");
-                        assignmentsByEmpType.merge(empType, 1L, Long::sum);
+                        assignmentsByEmpType.merge(empType != null ? empType : "Unspecified", 1L, Long::sum);
                     }
                     daySummary.put("role_counts", roleCounts);
                     dailySummary.add(daySummary);
@@ -514,7 +514,10 @@ public class SolverService {
             return responseData;
         } catch (Exception e) {
             LOG.error("Global-V2 solver failed", e);
-            return Map.of("status", "error", "message", e.getMessage());
+            Map<String, Object> errMap = new HashMap<>();
+            errMap.put("status", "error");
+            errMap.put("message", e.getMessage() != null ? e.getMessage() : "Unknown error");
+            return errMap;
         }
     }
 
@@ -869,7 +872,8 @@ public class SolverService {
                     roleCounts.put(role, roleCounts.getOrDefault(role, 0) + 1);
 
                     String empType = (String) empData.get("employeeType");
-                    assignmentsByEmployeeType.put(empType, assignmentsByEmployeeType.getOrDefault(empType, 0L) + 1L);
+                    String empTypeKey = empType != null ? empType : "Unspecified";
+                    assignmentsByEmployeeType.put(empTypeKey, assignmentsByEmployeeType.getOrDefault(empTypeKey, 0L) + 1L);
                 }
                 dayResult.put("role_counts", roleCounts);
                 
