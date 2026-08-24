@@ -172,16 +172,29 @@ public class SolverService {
                         emp.setPerformanceRating(userInput.containsKey("rating") ? parseNumber(userInput.get("rating")).intValue() : 3);
                         employeeInfoMap.put(empId, emp);
 
-                        // Parse availability
+                        // Parse availability (same array format as batch-assign)
                         if (userInput.containsKey("availability")) {
-                            Map<String, Map<String, Object>> availMap = (Map<String, Map<String, Object>>) userInput.get("availability");
-                            for (Map.Entry<String, Map<String, Object>> entry : availMap.entrySet()) {
-                                String dateStr = entry.getKey();
-                                Map<String, Object> availProps = entry.getValue();
-                                String status = (String) availProps.get("status");
-                                java.time.LocalTime from = availProps.containsKey("from") && availProps.get("from") != null ? java.time.LocalTime.parse((String) availProps.get("from")) : null;
-                                java.time.LocalTime to = availProps.containsKey("to") && availProps.get("to") != null ? java.time.LocalTime.parse((String) availProps.get("to")) : null;
-                                employeeAvailabilities.add(new EmployeeAvailability(empId, dateStr, status, from, to));
+                            Object availObj = userInput.get("availability");
+                            if (availObj instanceof List) {
+                                List<Map<String, Object>> availList = (List<Map<String, Object>>) availObj;
+                                for (Map<String, Object> entry : availList) {
+                                    String dateStr = (String) entry.get("date");
+                                    String status = (String) entry.get("status");
+                                    if (dateStr == null || status == null) continue;
+                                    java.time.LocalTime from = null;
+                                    java.time.LocalTime to = null;
+                                    if ("partial".equalsIgnoreCase(status)) {
+                                        String fromStr = (String) entry.get("from");
+                                        String toStr = (String) entry.get("to");
+                                        if (fromStr != null) from = java.time.LocalTime.parse(fromStr);
+                                        if (toStr != null) {
+                                            to = java.time.LocalTime.parse(toStr);
+                                        } else if (fromStr != null) {
+                                            to = java.time.LocalTime.of(23, 59);
+                                        }
+                                    }
+                                    employeeAvailabilities.add(new EmployeeAvailability(empId, dateStr, status, from, to));
+                                }
                             }
                         }
                     } else {
